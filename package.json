@@ -1,0 +1,46 @@
+{
+  "name": "nvd-nist-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MCP server exposing the NVD/NIST CVE, CVE history, CPE and CPE Match APIs over stdio",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "main": "dist/main.js",
+  "bin": {
+    "nvd-nist-mcp": "dist/main.js"
+  },
+  "files": [
+    "dist",
+    "migrations",
+    "README.md",
+    ".env.example"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "pretest": "npm run build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "start": "node dist/main.js",
+    "dev": "tsx src/main.ts",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\""
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.31.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.0",
+    "@types/node": "^26.6.3",
+    "eslint": "^9.39.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.71.0",
+    "vitest": "^5.0.3"
+  }
+}

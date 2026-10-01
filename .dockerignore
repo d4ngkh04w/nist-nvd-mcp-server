@@ -1,0 +1,36 @@
+# Build context: only the files the Dockerfile actually COPYs may be sent to the daemon.
+# Without this list a local node_modules/ (native, host-specific), dist/ and data/ would be
+# uploaded and could end up inside an image layer.
+
+node_modules
+dist
+data
+coverage
+logs
+
+# Local secrets and environment overrides
+.env
+.env.*
+!.env.example
+
+# Local planning notes, tests and tooling configuration
+BUG.md
+IMPLEMENT.md
+tests
+vitest.config.ts
+eslint.config.js
+.agents
+
+# VCS and editor metadata
+.git
+.gitignore
+.github
+.idea
+.vscode
+
+# Misc
+Dockerfile
+.dockerignore
+*.log
+.DS_Store
+Thumbs.db
