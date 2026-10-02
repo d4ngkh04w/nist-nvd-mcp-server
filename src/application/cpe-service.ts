@@ -59,7 +59,7 @@ export type CpeServiceDeps = {
   cursorCodec: CursorCodec;
 };
 
-/** Use cases for `search_cpes` and `get_cpe` (`/cpes/2.0`). */
+/** Use cases for `nvd_search_cpes` and `nvd_get_cpe` (`/cpes/2.0`). */
 export class CpeService {
   constructor(private readonly deps: CpeServiceDeps) {}
 
@@ -249,7 +249,7 @@ export class CpeService {
         DomainError.notFound(
           'CPE_NOT_FOUND',
           scan.totalResults > scan.scanned
-            ? `No CPE name exactly matching ${cpeName} was found within the first ${scan.scanned} of ${scan.totalResults} upstream results; use search_cpes to locate it`
+            ? `No CPE name exactly matching ${cpeName} was found within the first ${scan.scanned} of ${scan.totalResults} upstream results; use nvd_search_cpes to locate it`
             : `CPE ${cpeName} was not found in the NVD CPE dictionary`,
           { cpeName, scanned: scan.scanned, totalResults: scan.totalResults },
         ),
@@ -304,7 +304,7 @@ export class CpeService {
       query.lastModified === undefined
     ) {
       throw DomainError.invalidInput(
-        'search_cpes requires at least one filter: keyword, cpeMatchString, matchCriteriaId or lastModified',
+        'nvd_search_cpes requires at least one filter: keyword, cpeMatchString, matchCriteriaId or lastModified',
       );
     }
 

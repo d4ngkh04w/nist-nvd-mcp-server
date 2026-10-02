@@ -4,16 +4,16 @@ import { cveIdInput, cacheMetaOutput, cveDetailsOutput, readOnlyAnnotations } fr
 import { defineTool } from '../tool.js';
 
 /**
- * `get_cve` - full CVE record.
+ * `nvd_get_cve` - full CVE record.
  *
  * Served from the SQLite/disk cache when fresh (24 h TTL); a cache hit never contacts NVD.
  */
 export const getCveTool = defineTool({
-  name: 'get_cve',
+  name: 'nvd_get_cve',
   title: 'Get CVE details',
   description: [
     'Return the full NVD record for one CVE: description, all CVSS metrics, CWEs, configurations,',
-    'references and CISA KEV status. Use get_cve_summary for the essentials, get_cves for a batch.',
+    'references and CISA KEV status. Use nvd_get_cve_summary for the essentials, nvd_get_cves for a batch.',
     'Cached for 24 hours; on an NVD outage the stale copy is returned with a warning in meta.warnings.',
   ].join(' '),
   inputShape: {

@@ -83,7 +83,7 @@ export const MAX_SUMMARY_DESCRIPTION_CHARS = 2_000;
  */
 export const MAX_LOCAL_FILTER_FILL_REQUESTS = 4;
 
-/** Upstream pages `get_cpe` scans when resolving an exact `cpeName` by pattern search. */
+/** Upstream pages `nvd_get_cpe` scans when resolving an exact `cpeName` by pattern search. */
 export const MAX_CPE_NAME_SCAN_PAGES = 3;
 
 /**

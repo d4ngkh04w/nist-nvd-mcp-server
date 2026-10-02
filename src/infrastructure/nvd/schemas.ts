@@ -150,8 +150,11 @@ export const nvdCveHistoryItemSchema = z
           .object({
             action: z.string(),
             type: z.string().nullish(),
-            oldValue: z.string().nullish(),
-            newValue: z.string().nullish(),
+            // NVD returns `oldValue`/`newValue` as a string for ordinary edits but as a JSON object
+            // for structured payloads such as an SSVC decision, so any JSON value must be accepted.
+            // The mapper flattens non-strings to their JSON text (see `mapCveChange`).
+            oldValue: z.unknown().optional(),
+            newValue: z.unknown().optional(),
           })
           .loose(),
       )

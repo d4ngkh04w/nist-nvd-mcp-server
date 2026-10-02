@@ -52,7 +52,7 @@ export type CpeMatchServiceDeps = {
   cursorCodec: CursorCodec;
 };
 
-/** Use case for `search_cpe_matches` (`/cpematch/2.0`). */
+/** Use case for `nvd_search_cpe_matches` (`/cpematch/2.0`). */
 export class CpeMatchService {
   constructor(private readonly deps: CpeMatchServiceDeps) {}
 
@@ -157,7 +157,7 @@ export class CpeMatchService {
       query.lastModified === undefined
     ) {
       throw DomainError.invalidInput(
-        'search_cpe_matches requires at least one filter: cveId, matchCriteriaId, matchStringSearch or lastModified',
+        'nvd_search_cpe_matches requires at least one filter: cveId, matchCriteriaId, matchStringSearch or lastModified',
       );
     }
 

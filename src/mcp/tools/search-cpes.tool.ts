@@ -15,10 +15,10 @@ import {
 import { defineTool } from '../tool.js';
 
 /**
- * `search_cpes` - search the Official CPE Dictionary (`/cpes/2.0`).
+ * `nvd_search_cpes` - search the Official CPE Dictionary (`/cpes/2.0`).
  */
 export const searchCpesTool = defineTool({
-  name: 'search_cpes',
+  name: 'nvd_search_cpes',
   title: 'Search CPE names',
   description: [
     'Search the NVD Official CPE Dictionary by keyword, match string, criteria UUID, or last-modified window.',

@@ -22,6 +22,12 @@ data/
 logs/
 *.log
 
+# Evaluation harness (scripts/) — generated per run, the eval set itself is committed
+__pycache__/
+*.py[cod]
+.venv/
+evaluations/report*.md
+
 # Local planning / review notes (not part of the project)
 BUG.md
 IMPLEMENT.md

@@ -14,7 +14,7 @@ import type { NvdMockRequest } from '../helpers/nvd-mock-server.js';
  *   policy) - pages must stay full, offsets must not overlap, totals stay upstream
  * - recursive CVE configuration `children` survive schema + mapper + MCP output
  * - the raw payload stays available from SQLite after the disk cache entry disappears
- * - `get_cpe` by cpeName scans more than the first upstream page
+ * - `nvd_get_cpe` by cpeName scans more than the first upstream page
  */
 
 const CPE_NAME_TARGET = 'cpe:2.3:a:vendor:product:1.0:*:*:*:*:*:*:*';
@@ -55,7 +55,7 @@ describe('cross-cutting regressions', () => {
         };
       });
 
-      const page1 = await harness.callTool('search_cpes', { keyword: 'product', pageSize: 5 });
+      const page1 = await harness.callTool('nvd_search_cpes', { keyword: 'product', pageSize: 5 });
       expect(page1.isError).toBe(false);
 
       // The first upstream page contains four deprecated rows, so a second request is needed.
@@ -77,7 +77,7 @@ describe('cross-cutting regressions', () => {
       // Nine upstream rows were consumed, so one more page exists.
       expect(pagination['hasMore']).toBe(true);
 
-      const page2 = await harness.callTool('search_cpes', {
+      const page2 = await harness.callTool('nvd_search_cpes', {
         keyword: 'product',
         pageSize: 5,
         cursor: pagination['nextCursor'] as string,
@@ -106,7 +106,7 @@ describe('cross-cutting regressions', () => {
         };
       });
 
-      const result = await harness.callTool('search_cpes', {
+      const result = await harness.callTool('nvd_search_cpes', {
         keyword: 'product',
         pageSize: 5,
         includeDeprecated: true,
@@ -118,7 +118,7 @@ describe('cross-cutting regressions', () => {
     });
   });
 
-  describe('get_cpe resolves an exact cpeName beyond the first page', () => {
+  describe('nvd_get_cpe resolves an exact cpeName beyond the first page', () => {
     it('scans subsequent upstream pages before reporting not found', async () => {
       harness = await createHarness();
       const target = cpeItem({ cpeNameId: CPE_ID_TARGET, cpeName: CPE_NAME_TARGET });
@@ -138,7 +138,7 @@ describe('cross-cutting regressions', () => {
         };
       });
 
-      const found = await harness.callTool('get_cpe', { cpeName: CPE_NAME_TARGET });
+      const found = await harness.callTool('nvd_get_cpe', { cpeName: CPE_NAME_TARGET });
       expect(found.isError).toBe(false);
       expect((found.structuredContent?.['data'] as Record<string, unknown>)['cpeNameId']).toBe(
         CPE_ID_TARGET,
@@ -161,13 +161,13 @@ describe('cross-cutting regressions', () => {
         };
       });
 
-      const missing = await harness.callTool('get_cpe', {
+      const missing = await harness.callTool('nvd_get_cpe', {
         cpeName: 'cpe:2.3:a:vendor:product:does-not-exist:*:*:*:*:*:*:*',
       });
       expect(missing.isError).toBe(true);
       expect(missing.error?.['code']).toBe('CPE_NOT_FOUND');
       const message = missing.error?.['message'] as string;
-      expect(message).toContain('search_cpes');
+      expect(message).toContain('nvd_search_cpes');
       expect(message).toContain('300 of 1000');
       // The scan is bounded, never unbounded.
       expect(harness.nvd.countFor('/cpes/2.0')).toBe(3);
@@ -175,14 +175,14 @@ describe('cross-cutting regressions', () => {
   });
 
   describe('nested configuration children reach the MCP payload', () => {
-    it('returns the applicability tree with children through get_cve', async () => {
+    it('returns the applicability tree with children through nvd_get_cve', async () => {
       harness = await createHarness();
       harness.nvd.on('/cves/2.0', {
         status: 200,
         body: cveResponse([cveItem({ withNestedConfiguration: true })]),
       });
 
-      const result = await harness.callTool('get_cve', { cveId: 'CVE-2024-3094' });
+      const result = await harness.callTool('nvd_get_cve', { cveId: 'CVE-2024-3094' });
       expect(result.isError).toBe(false);
 
       const data = result.structuredContent?.['data'] as {
@@ -202,7 +202,7 @@ describe('cross-cutting regressions', () => {
       expect(root?.children[0]?.cpeMatch[0]?.vulnerable).toBe(true);
       expect(root?.children[0]?.children[0]?.cpeMatch[0]?.criteria).toContain('vendor:client');
 
-      const summary = await harness.callTool('get_cve_summary', { cveId: 'CVE-2024-3094' });
+      const summary = await harness.callTool('nvd_get_cve_summary', { cveId: 'CVE-2024-3094' });
       const affected = (summary.structuredContent?.['data'] as Record<string, unknown>)[
         'affectedProducts'
       ] as Array<{ criteria: string }>;
@@ -224,7 +224,7 @@ describe('cross-cutting regressions', () => {
         body: cveResponse([cveItem({ id: 'CVE-2024-3094' })]),
       });
 
-      const first = await harness.callTool('get_cve', { cveId: 'CVE-2024-3094', includeRaw: true });
+      const first = await harness.callTool('nvd_get_cve', { cveId: 'CVE-2024-3094', includeRaw: true });
       expect(first.isError).toBe(false);
       expect((first.structuredContent?.['data'] as Record<string, unknown>)['raw']).toBeDefined();
       expect(harness.nvd.countFor('/cves/2.0')).toBe(1);
@@ -232,7 +232,7 @@ describe('cross-cutting regressions', () => {
       // Simulate a disk-cache cleanup while SQLite keeps its fresh row.
       rmSync(path.join(harness.config.cache.directory), { recursive: true, force: true });
 
-      const second = await harness.callTool('get_cve', {
+      const second = await harness.callTool('nvd_get_cve', {
         cveId: 'CVE-2024-3094',
         includeRaw: true,
       });
@@ -253,7 +253,7 @@ describe('cross-cutting regressions', () => {
       harness = await createHarness();
       harness.nvd.on('/cves/2.0', { status: 200, body: cveResponse([cveItem()]) });
 
-      const invalid = await harness.callTool('search_cves', {
+      const invalid = await harness.callTool('nvd_search_cves', {
         keyword: 'xz',
         cvss: { version: '3.1' },
       });
@@ -261,7 +261,7 @@ describe('cross-cutting regressions', () => {
       expect(invalid.text).toContain('Input validation error');
       expect(harness.nvd.countFor('/cves/2.0')).toBe(0);
 
-      const valid = await harness.callTool('search_cves', {
+      const valid = await harness.callTool('nvd_search_cves', {
         keyword: 'xz',
         cvss: { version: '3.1', severity: 'HIGH' },
       });

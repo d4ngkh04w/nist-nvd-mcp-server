@@ -31,7 +31,7 @@ function paginatingResponder(dataset: Array<Record<string, unknown>>) {
   };
 }
 
-describe('search_cves and the recent/modified feeds (integration)', () => {
+describe('nvd_search_cves and the recent/modified feeds (integration)', () => {
   let harness: Harness | undefined;
 
   afterEach(async () => {
@@ -39,11 +39,11 @@ describe('search_cves and the recent/modified feeds (integration)', () => {
     harness = undefined;
   });
 
-  it('search_cves maps filters to upstream parameters and caches the page', async () => {
+  it('nvd_search_cves maps filters to upstream parameters and caches the page', async () => {
     harness = await createHarness();
     harness.nvd.on('/cves/2.0', { status: 200, body: cveResponse([cveItem()], { totalResults: 1 }) });
 
-    const result = await harness.callTool('search_cves', {
+    const result = await harness.callTool('nvd_search_cves', {
       keyword: 'xz backdoor',
       keywordExactMatch: true,
       kev: { only: true },
@@ -73,7 +73,7 @@ describe('search_cves and the recent/modified feeds (integration)', () => {
     });
 
     // Same query again -> cached, no additional upstream call.
-    const again = await harness.callTool('search_cves', {
+    const again = await harness.callTool('nvd_search_cves', {
       keyword: 'xz backdoor',
       keywordExactMatch: true,
       kev: { only: true },
@@ -85,12 +85,12 @@ describe('search_cves and the recent/modified feeds (integration)', () => {
     expect(harness.nvd.countFor('/cves/2.0')).toBe(1);
   });
 
-  it('search_cves paginates with an opaque cursor and rejects tampering or filter changes', async () => {
+  it('nvd_search_cves paginates with an opaque cursor and rejects tampering or filter changes', async () => {
     harness = await createHarness();
     const dataset = ascendingDataset(45);
     harness.nvd.on('/cves/2.0', paginatingResponder(dataset));
 
-    const page1 = await harness.callTool('search_cves', { keyword: 'xz', pageSize: 20 });
+    const page1 = await harness.callTool('nvd_search_cves', { keyword: 'xz', pageSize: 20 });
     expect(page1.isError).toBe(false);
     const pagination = readPagination(page1.structuredContent);
     expect(pagination).toMatchObject({ pageSize: 20, returned: 20, totalResults: 45, hasMore: true });
@@ -100,7 +100,7 @@ describe('search_cves and the recent/modified feeds (integration)', () => {
     expect(Number.isInteger(Number(cursor))).toBe(false);
     expect(cursor).not.toContain('startIndex=20');
 
-    const page2 = await harness.callTool('search_cves', {
+    const page2 = await harness.callTool('nvd_search_cves', {
       keyword: 'xz',
       pageSize: 20,
       cursor: cursor as string,
@@ -111,7 +111,7 @@ describe('search_cves and the recent/modified feeds (integration)', () => {
     expect(page2Request?.params).toMatchObject({ startIndex: '20', resultsPerPage: '20' });
 
     const tampered = `${(cursor as string).slice(0, -2)}xy`;
-    const tamperedResult = await harness.callTool('search_cves', {
+    const tamperedResult = await harness.callTool('nvd_search_cves', {
       keyword: 'xz',
       pageSize: 20,
       cursor: tampered,
@@ -119,7 +119,7 @@ describe('search_cves and the recent/modified feeds (integration)', () => {
     expect(tamperedResult.isError).toBe(true);
     expect(tamperedResult.error).toMatchObject({ code: 'INVALID_CURSOR', retryable: false });
 
-    const changedFilters = await harness.callTool('search_cves', {
+    const changedFilters = await harness.callTool('nvd_search_cves', {
       keyword: 'log4j',
       pageSize: 20,
       cursor: cursor as string,
@@ -128,7 +128,7 @@ describe('search_cves and the recent/modified feeds (integration)', () => {
     expect(changedFilters.error).toMatchObject({ code: 'INVALID_CURSOR' });
   });
 
-  it('search_cves validates the documented rules', async () => {
+  it('nvd_search_cves validates the documented rules', async () => {
     harness = await createHarness();
 
     const cases: Array<{ args: Record<string, unknown>; code: string }> = [
@@ -143,7 +143,7 @@ describe('search_cves and the recent/modified feeds (integration)', () => {
     ];
 
     for (const testCase of cases) {
-      const result = await harness.callTool('search_cves', testCase.args);
+      const result = await harness.callTool('nvd_search_cves', testCase.args);
       expect(result.isError, JSON.stringify(testCase.args)).toBe(true);
       expect(result.error?.['code'], JSON.stringify(testCase.args)).toBe(testCase.code);
     }
@@ -169,7 +169,7 @@ describe('search_cves and the recent/modified feeds (integration)', () => {
     ];
     harness.nvd.on('/cves/2.0', paginatingResponder(dataset));
 
-    const statusFiltered = await harness.callTool('search_cves', {
+    const statusFiltered = await harness.callTool('nvd_search_cves', {
       keyword: 'vendor',
       vulnStatuses: ['Analyzed', 'Undergoing Analysis'],
     });
@@ -185,7 +185,7 @@ describe('search_cves and the recent/modified feeds (integration)', () => {
     expect(readItems(statusFiltered.structuredContent)).toHaveLength(2);
     expect(readPagination(statusFiltered.structuredContent)['totalResults']).toBe(2);
 
-    const vulnerable = await harness.callTool('search_cves', {
+    const vulnerable = await harness.callTool('nvd_search_cves', {
       keyword: 'vendor',
       cpeName: 'cpe:2.3:a:vendor:product:1.0:*:*:*:*:*:*:*',
       isVulnerable: true,
@@ -196,7 +196,7 @@ describe('search_cves and the recent/modified feeds (integration)', () => {
     expect(vulnerableRequest?.params['cpeName']).toBe('cpe:2.3:a:vendor:product:1.0:*:*:*:*:*:*:*');
     expect(readMeta(vulnerable.structuredContent)['filtersAppliedClientSide']).toBeUndefined();
 
-    const kevWindow = await harness.callTool('search_cves', {
+    const kevWindow = await harness.callTool('nvd_search_cves', {
       keyword: 'vendor',
       kev: { addedBetween: { start: '2024-04-01', end: '2024-04-30' } },
     });
@@ -210,12 +210,12 @@ describe('search_cves and the recent/modified feeds (integration)', () => {
     expect(readMeta(kevWindow.structuredContent)['filtersAppliedClientSide']).toBeUndefined();
   });
 
-  it('get_recent_cves uses a 7-day window by default and returns the newest CVEs first', async () => {
+  it('nvd_get_recent_cves uses a 7-day window by default and returns the newest CVEs first', async () => {
     harness = await createHarness();
     const dataset = ascendingDataset(50);
     harness.nvd.on('/cves/2.0', paginatingResponder(dataset));
 
-    const page1 = await harness.callTool('get_recent_cves', { pageSize: 20 });
+    const page1 = await harness.callTool('nvd_get_recent_cves', { pageSize: 20 });
     expect(page1.isError).toBe(false);
 
     const upstream = harness.nvd.requestsFor('/cves/2.0');
@@ -241,7 +241,7 @@ describe('search_cves and the recent/modified feeds (integration)', () => {
 
     const pagination = readPagination(page1.structuredContent);
     expect(pagination['hasMore']).toBe(true);
-    const page2 = await harness.callTool('get_recent_cves', {
+    const page2 = await harness.callTool('nvd_get_recent_cves', {
       pageSize: 20,
       cursor: pagination['nextCursor'] as string,
     });
@@ -249,7 +249,7 @@ describe('search_cves and the recent/modified feeds (integration)', () => {
     const page2Request = harness.nvd.requestsFor('/cves/2.0')[2];
     expect(page2Request?.params).toMatchObject({ startIndex: '10', resultsPerPage: '20' });
 
-    const page3 = await harness.callTool('get_recent_cves', {
+    const page3 = await harness.callTool('nvd_get_recent_cves', {
       pageSize: 20,
       cursor: readPagination(page2.structuredContent)['nextCursor'] as string,
     });
@@ -258,11 +258,11 @@ describe('search_cves and the recent/modified feeds (integration)', () => {
     expect(page3Request?.params).toMatchObject({ startIndex: '0', resultsPerPage: '10' });
   });
 
-  it('get_recent_cves reuses the probe payload when the whole window fits into one page', async () => {
+  it('nvd_get_recent_cves reuses the probe payload when the whole window fits into one page', async () => {
     harness = await createHarness();
     harness.nvd.on('/cves/2.0', paginatingResponder(ascendingDataset(5)));
 
-    const result = await harness.callTool('get_recent_cves', { days: 1, pageSize: 20 });
+    const result = await harness.callTool('nvd_get_recent_cves', { days: 1, pageSize: 20 });
     expect(result.isError).toBe(false);
     expect(harness.nvd.countFor('/cves/2.0')).toBe(1);
     const items = readItems(result.structuredContent);
@@ -275,21 +275,21 @@ describe('search_cves and the recent/modified feeds (integration)', () => {
     ]);
   });
 
-  it('get_recent_cves validates the window rules', async () => {
+  it('nvd_get_recent_cves validates the window rules', async () => {
     harness = await createHarness();
 
-    const both = await harness.callTool('get_recent_cves', { days: 3, start: '2024-01-01' });
+    const both = await harness.callTool('nvd_get_recent_cves', { days: 3, start: '2024-01-01' });
     expect(both.isError).toBe(true);
     expect(both.error?.['code']).toBe('INVALID_INPUT');
 
-    const tooWide = await harness.callTool('get_recent_cves', { days: 121 });
+    const tooWide = await harness.callTool('nvd_get_recent_cves', { days: 121 });
     expect(tooWide.isError).toBe(true);
     // Rejected by the published input schema (the service enforces the same 120-day limit).
     expect(tooWide.text).toContain('Input validation error');
     expect(harness.nvd.countFor('/cves/2.0')).toBe(0);
   });
 
-  it('get_modified_cves uses last-modified semantics and returns newest first', async () => {
+  it('nvd_get_modified_cves uses last-modified semantics and returns newest first', async () => {
     harness = await createHarness();
     const dataset = ascendingDataset(25).map((item, index) => ({
       ...item,
@@ -297,7 +297,7 @@ describe('search_cves and the recent/modified feeds (integration)', () => {
     }));
     harness.nvd.on('/cves/2.0', paginatingResponder(dataset));
 
-    const result = await harness.callTool('get_modified_cves', {
+    const result = await harness.callTool('nvd_get_modified_cves', {
       start: '2026-01-01T00:00:00Z',
       end: '2026-01-04T00:00:00Z',
       pageSize: 10,
@@ -319,14 +319,14 @@ describe('search_cves and the recent/modified feeds (integration)', () => {
     expect(items[0]?.['id']).toBe('CVE-2024-2024');
   });
 
-  it('get_modified_cves forwards vulnStatuses upstream and keeps pagination totals authoritative', async () => {
+  it('nvd_get_modified_cves forwards vulnStatuses upstream and keeps pagination totals authoritative', async () => {
     harness = await createHarness();
     harness.nvd.on('/cves/2.0', paginatingResponder([
       cveItem({ id: 'CVE-2024-4001', vulnStatus: 'Analyzed' }),
       cveItem({ id: 'CVE-2024-4002', vulnStatus: 'Rejected' }),
     ]));
 
-    const result = await harness.callTool('get_modified_cves', {
+    const result = await harness.callTool('nvd_get_modified_cves', {
       days: 2,
       vulnStatuses: ['Analyzed'],
     });
@@ -350,7 +350,7 @@ describe('search_cves and the recent/modified feeds (integration)', () => {
     const dataset = ascendingDataset(50);
     harness.nvd.on('/cves/2.0', paginatingResponder(dataset));
 
-    const page1 = await harness.callTool('get_recent_cves', { days: 7, pageSize: 20 });
+    const page1 = await harness.callTool('nvd_get_recent_cves', { days: 7, pageSize: 20 });
     expect(page1.isError).toBe(false);
     const firstWindow = readMeta(page1.structuredContent)['window'] as
       | { start: string; end: string }
@@ -360,7 +360,7 @@ describe('search_cves and the recent/modified feeds (integration)', () => {
     // Several minutes pass before the caller asks for the next page.
     harness.clock.advanceMs(5 * 60_000);
 
-    const page2 = await harness.callTool('get_recent_cves', {
+    const page2 = await harness.callTool('nvd_get_recent_cves', {
       days: 7,
       pageSize: 20,
       cursor: readPagination(page1.structuredContent)['nextCursor'] as string,
@@ -383,7 +383,7 @@ describe('search_cves and the recent/modified feeds (integration)', () => {
     expect(page2Request?.params['startIndex']).toBe('10');
 
     // A different explicit window still invalidates the cursor.
-    const mismatched = await harness.callTool('get_recent_cves', {
+    const mismatched = await harness.callTool('nvd_get_recent_cves', {
       start: '2026-01-01T00:00:00Z',
       end: '2026-01-02T00:00:00Z',
       pageSize: 20,

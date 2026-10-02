@@ -108,7 +108,7 @@ async function runStdioSession(
       jsonrpc: '2.0',
       id: 3,
       method: 'tools/call',
-      params: { name: 'get_cve', arguments: { cveId: 'CVE-2024-3094' } },
+      params: { name: 'nvd_get_cve', arguments: { cveId: 'CVE-2024-3094' } },
     });
     await waitForId(3);
   }
@@ -178,7 +178,7 @@ describe('MCP contract: stdio framing and stdout purity', () => {
 
     expect(initialize?.result).toBeDefined();
     expect(listResult?.tools).toHaveLength(10);
-    expect(listResult?.tools?.map((tool) => tool.name)).toContain('get_cve');
+    expect(listResult?.tools?.map((tool) => tool.name)).toContain('nvd_get_cve');
     expect(callResult?.isError ?? false).toBe(false);
     expect((callResult?.structuredContent?.['data'] as { id?: string } | undefined)?.id).toBe(
       'CVE-2024-3094',

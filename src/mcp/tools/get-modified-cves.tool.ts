@@ -15,12 +15,12 @@ import {
 import { defineTool } from '../tool.js';
 
 /**
- * `get_modified_cves` - recently updated CVEs, newest first.
+ * `nvd_get_modified_cves` - recently updated CVEs, newest first.
  *
  * Uses `lastModStartDate`/`lastModEndDate` semantics; `vulnStatuses` is forwarded to NVD.
  */
 export const getModifiedCvesTool = defineTool({
-  name: 'get_modified_cves',
+  name: 'nvd_get_modified_cves',
   title: 'Get recently modified CVEs',
   description: [
     'Return CVEs ordered by last-modified date, newest first (ordering "last_modified_desc").',

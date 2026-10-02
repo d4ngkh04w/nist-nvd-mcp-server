@@ -32,6 +32,7 @@ import {
   cveHistoryResponse,
   cveItem,
   cveResponse,
+  SSVC_CHANGE_DETAIL,
   type CveFixtureOverrides,
 } from '../helpers/fixtures.js';
 
@@ -488,6 +489,44 @@ describe('mapCveChange', () => {
     expect('oldValue' in changed).toBe(false);
     expect('newValue' in changed).toBe(false);
     expect(changed.type).toBe('CVSS');
+  });
+
+  it('accepts an SSVC detail whose newValue is a JSON object and flattens it to text', () => {
+    // Regression: the live /cvehistory/2.0 returns `newValue` as an object for structured payloads,
+    // which used to fail response validation with UPSTREAM_BAD_RESPONSE and break page 2.
+    const item = nvdCveHistoryItemSchema.parse(
+      cveChange({ cveId: 'CVE-2021-44228', details: [SSVC_CHANGE_DETAIL] }),
+    );
+
+    const mapped = mapCveChange(item);
+
+    const detail = mapped.details[0];
+    if (detail === undefined) {
+      throw new Error('expected one mapped detail');
+    }
+    expect(detail.type).toBe('SSVC');
+    expect(typeof detail.newValue).toBe('string');
+    expect(JSON.parse(detail.newValue ?? '{}')).toEqual(SSVC_CHANGE_DETAIL.newValue);
+  });
+
+  it('keeps a page of changes valid when only some details carry structured values', () => {
+    const response = nvdCveHistoryResponseSchema.parse(
+      cveHistoryResponse([
+        cveChange({ details: [SSVC_CHANGE_DETAIL] }),
+        cveChange({ cveChangeId: 'AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE' }),
+        cveChange({
+          cveChangeId: '11111111-2222-3333-4444-555555555555',
+          details: [{ action: 'Removed', type: 'Reference', oldValue: '' }],
+        }),
+      ]),
+    );
+
+    const mapped = response.cveChanges.map((wrapper) => mapCveChange(wrapper.change));
+
+    expect(mapped).toHaveLength(3);
+    expect(typeof mapped[0]?.details[0]?.newValue).toBe('string');
+    expect(mapped[1]?.details[0]?.newValue).toBe('CRITICAL');
+    expect(mapped[2]?.details[0]?.oldValue).toBe('');
   });
 });
 

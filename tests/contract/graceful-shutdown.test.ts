@@ -161,7 +161,7 @@ describe('MCP contract: graceful shutdown and restart', () => {
       jsonrpc: '2.0',
       id: 2,
       method: 'tools/call',
-      params: { name: 'get_cve', arguments: { cveId: 'CVE-2024-3094' } },
+      params: { name: 'nvd_get_cve', arguments: { cveId: 'CVE-2024-3094' } },
     });
     await new Promise((resolve) => setTimeout(resolve, 400));
 
@@ -195,7 +195,7 @@ describe('MCP contract: graceful shutdown and restart', () => {
       jsonrpc: '2.0',
       id: 2,
       method: 'tools/call',
-      params: { name: 'get_cve', arguments: { cveId: 'CVE-2024-3094' } },
+      params: { name: 'nvd_get_cve', arguments: { cveId: 'CVE-2024-3094' } },
     });
     await new Promise((resolve) => setTimeout(resolve, 300));
     const signalAt = Date.now();
@@ -211,7 +211,7 @@ describe('MCP contract: graceful shutdown and restart', () => {
       jsonrpc: '2.0',
       id: 2,
       method: 'tools/call',
-      params: { name: 'get_cve', arguments: { cveId: 'CVE-2024-3094' } },
+      params: { name: 'nvd_get_cve', arguments: { cveId: 'CVE-2024-3094' } },
     });
     await new Promise((resolve) => setTimeout(resolve, 300));
     const pipeAt = Date.now();
@@ -232,7 +232,7 @@ describe('MCP contract: graceful shutdown and restart', () => {
       jsonrpc: '2.0',
       id: 2,
       method: 'tools/call',
-      params: { name: 'get_cve', arguments: { cveId: 'CVE-2024-3094' } },
+      params: { name: 'nvd_get_cve', arguments: { cveId: 'CVE-2024-3094' } },
     });
     const response = await third.waitForId(2, 20_000);
     expect(response.error).toBeUndefined();
@@ -258,7 +258,7 @@ describe('MCP contract: graceful shutdown and restart', () => {
       jsonrpc: '2.0',
       id: 2,
       method: 'tools/call',
-      params: { name: 'get_cve', arguments: { cveId: 'CVE-2024-3094' } },
+      params: { name: 'nvd_get_cve', arguments: { cveId: 'CVE-2024-3094' } },
     });
     await new Promise((resolve) => setTimeout(resolve, 400));
     session.child.kill('SIGKILL');
@@ -278,7 +278,7 @@ describe('MCP contract: graceful shutdown and restart', () => {
       jsonrpc: '2.0',
       id: 2,
       method: 'tools/call',
-      params: { name: 'get_cve', arguments: { cveId: 'CVE-2024-3094' } },
+      params: { name: 'nvd_get_cve', arguments: { cveId: 'CVE-2024-3094' } },
     });
     const response = await restarted.waitForId(2, 20_000);
     expect(JSON.stringify(response.result)).toContain('CVE-2024-3094');

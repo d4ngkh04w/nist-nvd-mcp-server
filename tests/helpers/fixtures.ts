@@ -234,6 +234,22 @@ export function cveChange(overrides: Partial<Record<string, unknown>> = {}): Rec
   };
 }
 
+/**
+ * Detail as the live API returns it for an SSVC decision: `newValue` is a JSON object, not a
+ * string. Captured verbatim from `/cvehistory/2.0` for CVE-2021-44228.
+ */
+export const SSVC_CHANGE_DETAIL = {
+  action: 'Added',
+  type: 'SSVC',
+  newValue: {
+    timestamp: '2025-02-04T14:25:34.416117Z',
+    id: 'CVE-2021-44228',
+    options: [{ exploitation: 'active' }, { automatable: 'yes' }, { technicalImpact: 'total' }],
+    role: 'CISA Coordinator',
+    version: '2.0.3',
+  },
+} as const;
+
 export function cveHistoryResponse(
   changes: Array<Record<string, unknown>>,
   options: CveResponseOptions = {},

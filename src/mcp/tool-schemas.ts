@@ -314,9 +314,16 @@ export const cpeMatchRecordOutput = z
   })
   .loose();
 
-/** Annotations applied to every tool: the server never mutates remote state. */
+/**
+ * Annotations applied to every tool: the server never mutates remote state.
+ *
+ * `destructiveHint` is stated explicitly even though the specification only considers it when
+ * `readOnlyHint` is false: its default is `true`, and some clients read it without checking
+ * `readOnlyHint` first.
+ */
 export const readOnlyAnnotations = {
   readOnlyHint: true,
+  destructiveHint: false,
   idempotentHint: true,
   openWorldHint: true,
 } as const;

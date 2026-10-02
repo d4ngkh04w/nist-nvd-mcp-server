@@ -1,18 +1,28 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { createHarness, type Harness } from '../helpers/harness.js';
 
+const packageJsonVersion = (
+  JSON.parse(
+    readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'package.json'), 'utf8'),
+  ) as { version: string }
+).version;
+
 const EXPECTED_TOOL_NAMES = [
-  'get_cve',
-  'get_cve_summary',
-  'get_cves',
-  'search_cves',
-  'get_cve_history',
-  'get_recent_cves',
-  'get_modified_cves',
-  'search_cpes',
-  'get_cpe',
-  'search_cpe_matches',
+  'nvd_get_cve',
+  'nvd_get_cve_summary',
+  'nvd_get_cves',
+  'nvd_search_cves',
+  'nvd_get_cve_history',
+  'nvd_get_recent_cves',
+  'nvd_get_modified_cves',
+  'nvd_search_cpes',
+  'nvd_get_cpe',
+  'nvd_search_cpe_matches',
 ];
 
 type ToolDescriptor = {
@@ -39,7 +49,7 @@ describe('MCP contract: tools/list', () => {
 
     expect(tools.map((tool) => tool.name)).toEqual(EXPECTED_TOOL_NAMES);
     for (const tool of tools) {
-      expect(tool.name.startsWith('nvd_')).toBe(false);
+      expect(tool.name.startsWith('nvd_')).toBe(true);
       expect(tool.title ?? '').not.toHaveLength(0);
       expect(tool.description ?? '').not.toHaveLength(0);
     }
@@ -71,7 +81,7 @@ describe('MCP contract: tools/list', () => {
     const tools = (response?.tools ?? []) as ToolDescriptor[];
 
     const collectionTools = tools.filter((tool) =>
-      ['search_cves', 'get_cve_history', 'get_recent_cves', 'get_modified_cves', 'search_cpes', 'search_cpe_matches'].includes(
+      ['nvd_search_cves', 'nvd_get_cve_history', 'nvd_get_recent_cves', 'nvd_get_modified_cves', 'nvd_search_cpes', 'nvd_search_cpe_matches'].includes(
         tool.name,
       ),
     );
@@ -148,7 +158,9 @@ describe('MCP contract: tools/list', () => {
   it('reports the server identity', async () => {
     harness = await createHarness();
     const version = harness.client?.getServerVersion();
-    expect(version?.name).toBe('nvd-nist-mcp');
+    expect(version?.name).toBe('nist-nvd-mcp-server');
     expect(version?.version).toMatch(/^\d+\.\d+\.\d+$/);
+    // Keeps SERVER_VERSION from drifting away from the published package version.
+    expect(version?.version).toBe(packageJsonVersion);
   });
 });

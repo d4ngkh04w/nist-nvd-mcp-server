@@ -14,7 +14,7 @@ import { createStderrLogger, redirectConsoleToStderr } from './shared/logger.js'
 async function main(): Promise<void> {
   loadDotEnvFile();
   const config = loadConfig(process.env);
-  const logger = createStderrLogger(config.logLevel, { service: 'nvd-nist-mcp', pid: process.pid });
+  const logger = createStderrLogger(config.logLevel, { service: 'nist-nvd-mcp-server', pid: process.pid });
   redirectConsoleToStderr(logger);
 
   const app = await createApp({ config, logger });

@@ -15,10 +15,10 @@ import {
 import { defineTool } from '../tool.js';
 
 /**
- * `search_cpe_matches` - CPE Match Criteria (`/cpematch/2.0`).
+ * `nvd_search_cpe_matches` - CPE Match Criteria (`/cpematch/2.0`).
  */
 export const searchCpeMatchesTool = defineTool({
-  name: 'search_cpe_matches',
+  name: 'nvd_search_cpe_matches',
   title: 'Search CPE Match Criteria',
   description: [
     'Search CPE Match Criteria, which link CVEs to CPE names and version ranges.',

@@ -86,7 +86,7 @@ export type CveDescription = {
   value: string;
 };
 
-/** Full CVE detail as returned by `get_cve`. */
+/** Full CVE detail as returned by `nvd_get_cve`. */
 export type CveDetails = {
   id: string;
   sourceIdentifier: string;
@@ -106,7 +106,7 @@ export type CveDetails = {
   raw?: unknown;
 };
 
-/** Compact projection used by `get_cve_summary`, `get_cves` and search results. */
+/** Compact projection used by `nvd_get_cve_summary`, `nvd_get_cves` and search results. */
 export type CveSummary = {
   id: string;
   published: string;

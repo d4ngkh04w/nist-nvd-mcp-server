@@ -22,13 +22,13 @@ const sharedFeedFields = {
 };
 
 /**
- * `get_recent_cves` - newly published CVEs, newest first.
+ * `nvd_get_recent_cves` - newly published CVEs, newest first.
  *
  * The NVD API returns date-range results in ascending order, so the first page costs one extra
  * probing request and pages are fetched end-anchored to guarantee `published_desc` ordering.
  */
 export const getRecentCvesTool = defineTool({
-  name: 'get_recent_cves',
+  name: 'nvd_get_recent_cves',
   title: 'Get recently published CVEs',
   description: [
     'Return CVEs ordered by publication date, newest first (ordering "published_desc").',

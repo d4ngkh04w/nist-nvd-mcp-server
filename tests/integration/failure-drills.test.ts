@@ -76,7 +76,7 @@ describe('failure drills: shutdown, locking, upstream errors and corruption', ()
       delayMs: 300,
     }));
 
-    const inFlight = harness.callTool('get_cve', { cveId: 'CVE-2024-1000' });
+    const inFlight = harness.callTool('nvd_get_cve', { cveId: 'CVE-2024-1000' });
     // Close the whole app (rate limiter + SQLite handle) while the request is still upstream.
     await new Promise((resolve) => setTimeout(resolve, 40));
     expect(() => harness!.app.close()).not.toThrow();
@@ -106,7 +106,7 @@ describe('failure drills: shutdown, locking, upstream errors and corruption', ()
     cveByIds(first);
     const sqlitePath = first.config.storage.sqlitePath;
     const cacheDirectory = first.config.cache.directory;
-    expect((await first.callTool('get_cve', { cveId: 'CVE-2024-1000' })).isError).toBe(false);
+    expect((await first.callTool('nvd_get_cve', { cveId: 'CVE-2024-1000' })).isError).toBe(false);
     const upstreamCalls = first.nvd.countFor('/cves/2.0');
     expect(upstreamCalls).toBe(1);
     await first.close();
@@ -123,7 +123,7 @@ describe('failure drills: shutdown, locking, upstream errors and corruption', ()
         keepTemp: true,
       });
 
-      const outcome = await harness.callTool('get_cve', { cveId: 'CVE-2024-1000' });
+      const outcome = await harness.callTool('nvd_get_cve', { cveId: 'CVE-2024-1000' });
       expect(outcome.isError).toBe(false);
       const meta = outcome.structuredContent?.['meta'] as { cacheStatus?: string } | undefined;
       expect(meta?.cacheStatus).toBe('hit');
@@ -163,7 +163,7 @@ describe('failure drills: shutdown, locking, upstream errors and corruption', ()
 
     const ids = Array.from({ length: 10 }, (_, index) => `CVE-2024-${3000 + index}`);
     const startedAt = Date.now();
-    const inFlight = Promise.all(ids.map((cveId) => harness!.callTool('get_cve', { cveId })));
+    const inFlight = Promise.all(ids.map((cveId) => harness!.callTool('nvd_get_cve', { cveId })));
     // The competing writer releases the lock while the server is persisting its own rows.
     setTimeout(() => {
       blocker.exec('COMMIT');
@@ -197,7 +197,7 @@ describe('failure drills: shutdown, locking, upstream errors and corruption', ()
 
     try {
       const startedAt = Date.now();
-      const outcome = await harness.callTool('get_cve', { cveId: 'CVE-2024-1000' });
+      const outcome = await harness.callTool('nvd_get_cve', { cveId: 'CVE-2024-1000' });
       expect(outcome.isError).toBe(false);
       const data = outcome.structuredContent?.['data'] as { id?: string } | undefined;
       expect(data?.id).toBe('CVE-2024-1000');
@@ -219,7 +219,7 @@ describe('failure drills: shutdown, locking, upstream errors and corruption', ()
     harness.nvd.on('/cves/2.0', () => ({ hang: true }));
 
     const startedAt = Date.now();
-    const outcome = await harness.callTool('get_cve', { cveId: 'CVE-2024-1000' });
+    const outcome = await harness.callTool('nvd_get_cve', { cveId: 'CVE-2024-1000' });
     const elapsedMs = Date.now() - startedAt;
 
     expect(outcome.isError).toBe(true);
@@ -231,7 +231,7 @@ describe('failure drills: shutdown, locking, upstream errors and corruption', ()
 
     // The process must still serve a healthy request afterwards.
     cveByIds(harness);
-    const recovered = await harness.callTool('get_cve', { cveId: 'CVE-2024-1000' });
+    const recovered = await harness.callTool('nvd_get_cve', { cveId: 'CVE-2024-1000' });
     expect(recovered.isError).toBe(false);
     expect(integrity(harness.config.storage.sqlitePath)).toBe('ok');
   });
@@ -253,7 +253,7 @@ describe('failure drills: shutdown, locking, upstream errors and corruption', ()
     });
 
     const ids = Array.from({ length: 6 }, (_, index) => `CVE-2024-${2000 + index}`);
-    const outcomes = await Promise.all(ids.map((cveId) => harness!.callTool('get_cve', { cveId })));
+    const outcomes = await Promise.all(ids.map((cveId) => harness!.callTool('nvd_get_cve', { cveId })));
 
     const errors = outcomes.filter((outcome) => outcome.isError);
     const successes = outcomes.filter((outcome) => !outcome.isError);
@@ -274,7 +274,7 @@ describe('failure drills: shutdown, locking, upstream errors and corruption', ()
     harness = await createHarness({ nvdOverrides: { ...FAST, maxRetries: 2 } });
     harness.nvd.on('/cves/2.0', () => ({ status: 503, body: { error: 'maintenance' } }));
 
-    const outcome = await harness.callTool('get_cve', { cveId: 'CVE-2024-1000' });
+    const outcome = await harness.callTool('nvd_get_cve', { cveId: 'CVE-2024-1000' });
 
     expect(outcome.isError).toBe(true);
     expect(outcome.error?.['code']).toBe('UPSTREAM_UNAVAILABLE');
@@ -287,7 +287,7 @@ describe('failure drills: shutdown, locking, upstream errors and corruption', ()
     harness = await createHarness({ nvdOverrides: FAST });
     cveByIds(harness);
 
-    expect((await harness.callTool('get_cve', { cveId: 'CVE-2024-1000' })).isError).toBe(false);
+    expect((await harness.callTool('nvd_get_cve', { cveId: 'CVE-2024-1000' })).isError).toBe(false);
 
     // Drop the SQLite row but keep (and corrupt) the disk cache file.
     const writer = new DatabaseSync(harness.config.storage.sqlitePath);
@@ -301,7 +301,7 @@ describe('failure drills: shutdown, locking, upstream errors and corruption', ()
     writeFileSync(target, '{"version":1,"payload":{"trunc', 'utf8');
 
     const upstreamBefore = harness.nvd.countFor('/cves/2.0');
-    const outcome = await harness.callTool('get_cve', { cveId: 'CVE-2024-1000' });
+    const outcome = await harness.callTool('nvd_get_cve', { cveId: 'CVE-2024-1000' });
 
     expect(outcome.isError).toBe(false);
     expect(harness.nvd.countFor('/cves/2.0')).toBe(upstreamBefore + 1);
@@ -317,7 +317,7 @@ describe('failure drills: shutdown, locking, upstream errors and corruption', ()
   it('serves a torn SQLite row from the durable copy and repairs it', async () => {
     harness = await createHarness({ nvdOverrides: FAST });
     cveByIds(harness);
-    expect((await harness.callTool('get_cve', { cveId: 'CVE-2024-1000' })).isError).toBe(false);
+    expect((await harness.callTool('nvd_get_cve', { cveId: 'CVE-2024-1000' })).isError).toBe(false);
 
     const writer = new DatabaseSync(harness.config.storage.sqlitePath);
     writer.prepare('UPDATE cves SET normalized_json = ? WHERE cve_id = ?').run(
@@ -327,7 +327,7 @@ describe('failure drills: shutdown, locking, upstream errors and corruption', ()
     writer.close();
 
     const before = harness.nvd.countFor('/cves/2.0');
-    const outcome = await harness.callTool('get_cve', { cveId: 'CVE-2024-1000' });
+    const outcome = await harness.callTool('nvd_get_cve', { cveId: 'CVE-2024-1000' });
 
     expect(outcome.isError).toBe(false);
     const data = outcome.structuredContent?.['data'] as { id?: string } | undefined;
@@ -352,7 +352,7 @@ describe('failure drills: shutdown, locking, upstream errors and corruption', ()
     harness = await createHarness({ nvdOverrides: FAST });
     harness.nvd.on('/cves/2.0', () => ({ status: 200, rawBody: '<html>not json</html>' }));
 
-    const notJson = await harness.callTool('get_cve', { cveId: 'CVE-2024-1000' });
+    const notJson = await harness.callTool('nvd_get_cve', { cveId: 'CVE-2024-1000' });
     expect(notJson.isError).toBe(true);
     expect(notJson.error?.['code']).toBe('UPSTREAM_BAD_RESPONSE');
 
@@ -360,7 +360,7 @@ describe('failure drills: shutdown, locking, upstream errors and corruption', ()
       status: 200,
       body: { totalResults: 'many', vulnerabilities: { nope: true } },
     }));
-    const invalidShape = await harness.callTool('get_cve', { cveId: 'CVE-2024-1000' });
+    const invalidShape = await harness.callTool('nvd_get_cve', { cveId: 'CVE-2024-1000' });
     expect(invalidShape.isError).toBe(true);
     expect(invalidShape.error?.['code']).toBe('UPSTREAM_BAD_RESPONSE');
 
@@ -372,16 +372,16 @@ describe('failure drills: shutdown, locking, upstream errors and corruption', ()
     harness = await createHarness({ nvdOverrides: FAST });
     const listed = await harness.client?.listTools();
     expect((listed?.tools ?? []).map((tool) => tool.name).sort()).toEqual([
-      'get_cpe',
-      'get_cve',
-      'get_cve_history',
-      'get_cve_summary',
-      'get_cves',
-      'get_modified_cves',
-      'get_recent_cves',
-      'search_cpe_matches',
-      'search_cpes',
-      'search_cves',
+      'nvd_get_cpe',
+      'nvd_get_cve',
+      'nvd_get_cve_history',
+      'nvd_get_cve_summary',
+      'nvd_get_cves',
+      'nvd_get_modified_cves',
+      'nvd_get_recent_cves',
+      'nvd_search_cpe_matches',
+      'nvd_search_cpes',
+      'nvd_search_cves',
     ]);
     for (const tool of listed?.tools ?? []) {
       expect(tool.inputSchema.type).toBe('object');

@@ -103,7 +103,7 @@ export function validateDateWindow(
 
 /**
  * Resolves the `days` / `start`+`end` / default-window input pattern used by
- * `get_recent_cves` and `get_modified_cves`.
+ * `nvd_get_recent_cves` and `nvd_get_modified_cves`.
  */
 export function resolveDateWindow(
   input: { days?: number; start?: string; end?: string | undefined },

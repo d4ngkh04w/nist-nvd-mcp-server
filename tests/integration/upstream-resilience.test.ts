@@ -20,7 +20,7 @@ describe('NVD resilience: retry, timeout, error mapping and rate limiting (integ
     );
 
     const startedAt = Date.now();
-    const result = await harness.callTool('get_cve', { cveId: 'CVE-2024-3094' });
+    const result = await harness.callTool('nvd_get_cve', { cveId: 'CVE-2024-3094' });
     const elapsedMs = Date.now() - startedAt;
 
     expect(result.isError).toBe(false);
@@ -33,7 +33,7 @@ describe('NVD resilience: retry, timeout, error mapping and rate limiting (integ
     harness = await createHarness({ nvdOverrides: { maxRetries: 1 } });
     harness.nvd.on('/cves/2.0', { status: 503, body: { message: 'unavailable' } });
 
-    const result = await harness.callTool('get_cve', { cveId: 'CVE-2024-3094' });
+    const result = await harness.callTool('nvd_get_cve', { cveId: 'CVE-2024-3094' });
     expect(result.isError).toBe(true);
     expect(result.error).toMatchObject({ code: 'UPSTREAM_UNAVAILABLE', retryable: true });
     // 1 initial attempt + 1 retry.
@@ -48,7 +48,7 @@ describe('NVD resilience: retry, timeout, error mapping and rate limiting (integ
         : { status: 200, body: cveResponse([cveItem({ id: 'CVE-2024-3094' })]) },
     );
 
-    const result = await harness.callTool('get_cve', { cveId: 'CVE-2024-3094' });
+    const result = await harness.callTool('nvd_get_cve', { cveId: 'CVE-2024-3094' });
     expect(result.isError).toBe(false);
     expect(harness.nvd.countFor('/cves/2.0')).toBe(3);
     expect(readMeta(result.structuredContent)).toMatchObject({ cacheStatus: 'miss', source: 'nvd' });
@@ -58,7 +58,7 @@ describe('NVD resilience: retry, timeout, error mapping and rate limiting (integ
     harness = await createHarness({ nvdOverrides: { maxRetries: 4 } });
     harness.nvd.on('/cves/2.0', { status: 404, body: {} });
 
-    const result = await harness.callTool('get_cve', { cveId: 'CVE-2024-3094' });
+    const result = await harness.callTool('nvd_get_cve', { cveId: 'CVE-2024-3094' });
     expect(result.isError).toBe(true);
     expect(result.error).toMatchObject({ code: 'UPSTREAM_BAD_RESPONSE', retryable: false });
     expect(harness.nvd.countFor('/cves/2.0')).toBe(1);
@@ -70,7 +70,7 @@ describe('NVD resilience: retry, timeout, error mapping and rate limiting (integ
     });
     harness.nvd.on('/cves/2.0', { hang: true });
 
-    const result = await harness.callTool('get_cve', { cveId: 'CVE-2024-3094' });
+    const result = await harness.callTool('nvd_get_cve', { cveId: 'CVE-2024-3094' });
     expect(result.isError).toBe(true);
     expect(result.error).toMatchObject({ code: 'REQUEST_TIMEOUT', retryable: true });
     expect(harness.nvd.countFor('/cves/2.0')).toBeGreaterThanOrEqual(2);
@@ -80,14 +80,14 @@ describe('NVD resilience: retry, timeout, error mapping and rate limiting (integ
     harness = await createHarness({ nvdOverrides: { maxRetries: 0 } });
     harness.nvd.on('/cves/2.0', { status: 200, rawBody: 'not-json' });
 
-    const malformed = await harness.callTool('get_cve', { cveId: 'CVE-2024-3094' });
+    const malformed = await harness.callTool('nvd_get_cve', { cveId: 'CVE-2024-3094' });
     expect(malformed.isError).toBe(true);
     expect(malformed.error?.['code']).toBe('UPSTREAM_BAD_RESPONSE');
     expect(malformed.error?.['message']).toContain('not valid JSON');
 
     harness.nvd.reset();
     harness.nvd.on('/cves/2.0', { status: 200, body: { resultsPerPage: 1 } });
-    const wrongShape = await harness.callTool('get_cve', { cveId: 'CVE-2024-3094' });
+    const wrongShape = await harness.callTool('nvd_get_cve', { cveId: 'CVE-2024-3094' });
     expect(wrongShape.isError).toBe(true);
     expect(wrongShape.error?.['code']).toBe('UPSTREAM_BAD_RESPONSE');
     const details = wrongShape.error?.['details'] as Record<string, unknown>;
@@ -106,7 +106,7 @@ describe('NVD resilience: retry, timeout, error mapping and rate limiting (integ
     }));
 
     // A descending feed issues a probe request and then the end-anchored page.
-    const result = await harness.callTool('get_recent_cves', { days: 3, pageSize: 10 });
+    const result = await harness.callTool('nvd_get_recent_cves', { days: 3, pageSize: 10 });
     expect(result.isError).toBe(false);
 
     const requests = harness.nvd.requestsFor('/cves/2.0');
@@ -123,9 +123,9 @@ describe('NVD resilience: retry, timeout, error mapping and rate limiting (integ
     harness = await createHarness({ nvdOverrides: { minIntervalMs: 120 } });
     harness.nvd.on('/cves/2.0', { status: 200, body: cveResponse([cveItem()]) });
 
-    await harness.callTool('get_cve', { cveId: 'CVE-2024-3094' });
+    await harness.callTool('nvd_get_cve', { cveId: 'CVE-2024-3094' });
     const startedAt = Date.now();
-    const cached = await harness.callTool('get_cve', { cveId: 'CVE-2024-3094' });
+    const cached = await harness.callTool('nvd_get_cve', { cveId: 'CVE-2024-3094' });
     const elapsedMs = Date.now() - startedAt;
 
     expect(readMeta(cached.structuredContent)).toMatchObject({ cacheStatus: 'hit' });

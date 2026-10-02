@@ -14,7 +14,8 @@ import { searchCpeMatchesTool } from './search-cpe-matches.tool.js';
 /**
  * The complete public tool surface.
  *
- * Order matters only for `tools/list`; tool names never carry an `nvd_` prefix.
+ * Order matters only for `tools/list`. Tool names are `snake_case` and carry an `nvd_` prefix so
+ * they stay unambiguous when this server runs next to other MCP servers.
  */
 export const allTools: readonly AnyToolDefinition[] = [
   getCveTool,

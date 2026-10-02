@@ -53,7 +53,7 @@ USER nvd
 # This is a stdio MCP server: it speaks JSON-RPC over stdin/stdout and is meant
 # to be started by an MCP client, for example:
 #
-#   docker run -i --rm -e NVD_API_KEY=... -v nvd-data:/data nvd-nist-mcp
+#   docker run -i --rm -e NVD_API_KEY=... -v nvd-data:/data nist-nvd-mcp-server
 #
 # Use -i (not -t) so stdin stays open. Logs are written to stderr; stdout must
 # stay clean for JSON-RPC frames. No ports are exposed because there is no

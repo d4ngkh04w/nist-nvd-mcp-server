@@ -17,14 +17,14 @@ import {
 import { defineTool } from '../tool.js';
 
 /**
- * `search_cves` - general CVE search.
+ * `nvd_search_cves` - general CVE search.
  *
  * Every filter accepted by the NVD API is forwarded upstream (`vulnStatuses`, `isVulnerable`,
  * `kevStartDate`/`kevEndDate` included), so results and totals reflect the real server-side
  * result set.
  */
 export const searchCvesTool = defineTool({
-  name: 'search_cves',
+  name: 'nvd_search_cves',
   title: 'Search CVEs',
   description: [
     'Search CVE records with the NVD 2.0 filters: keyword, CVE IDs, CPE name or match string, CWE,',

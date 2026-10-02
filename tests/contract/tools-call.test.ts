@@ -68,7 +68,7 @@ describe('MCP contract: tools/call for all ten tools', () => {
 
     const calls: Array<{ tool: string; args: Record<string, unknown>; assert: (payload: Record<string, unknown>) => void }> = [
       {
-        tool: 'get_cve',
+        tool: 'nvd_get_cve',
         args: { cveId: 'CVE-2024-3094' },
         assert: (payload) => {
           const data = payload['data'] as Record<string, unknown>;
@@ -78,7 +78,7 @@ describe('MCP contract: tools/call for all ten tools', () => {
         },
       },
       {
-        tool: 'get_cve_summary',
+        tool: 'nvd_get_cve_summary',
         args: { cveId: 'CVE-2024-3094' },
         assert: (payload) => {
           const data = payload['data'] as Record<string, unknown>;
@@ -87,7 +87,7 @@ describe('MCP contract: tools/call for all ten tools', () => {
         },
       },
       {
-        tool: 'get_cves',
+        tool: 'nvd_get_cves',
         args: { cveIds: ['CVE-2024-3094', 'CVE-2024-3095'] },
         assert: (payload) => {
           expect(readItems(payload)).toHaveLength(2);
@@ -96,7 +96,7 @@ describe('MCP contract: tools/call for all ten tools', () => {
         },
       },
       {
-        tool: 'search_cves',
+        tool: 'nvd_search_cves',
         args: { keyword: 'log4j', pageSize: 5 },
         assert: (payload) => {
           expect(readItems(payload)[0]?.['id']).toBe('CVE-2021-44228');
@@ -104,7 +104,7 @@ describe('MCP contract: tools/call for all ten tools', () => {
         },
       },
       {
-        tool: 'get_cve_history',
+        tool: 'nvd_get_cve_history',
         args: { cveId: 'CVE-2024-3094' },
         assert: (payload) => {
           expect(readItems(payload)[0]).toMatchObject({ eventName: 'CVE Modified' });
@@ -112,7 +112,7 @@ describe('MCP contract: tools/call for all ten tools', () => {
         },
       },
       {
-        tool: 'get_recent_cves',
+        tool: 'nvd_get_recent_cves',
         args: { days: 7 },
         assert: (payload) => {
           expect(readItems(payload)).toHaveLength(1);
@@ -120,7 +120,7 @@ describe('MCP contract: tools/call for all ten tools', () => {
         },
       },
       {
-        tool: 'get_modified_cves',
+        tool: 'nvd_get_modified_cves',
         args: { days: 7, vulnStatuses: ['Analyzed'] },
         assert: (payload) => {
           expect(readItems(payload)).toHaveLength(1);
@@ -131,14 +131,14 @@ describe('MCP contract: tools/call for all ten tools', () => {
         },
       },
       {
-        tool: 'search_cpes',
+        tool: 'nvd_search_cpes',
         args: { keyword: 'xz' },
         assert: (payload) => {
           expect(readItems(payload)[0]?.['cpeNameId']).toBe(CPE_ID);
         },
       },
       {
-        tool: 'get_cpe',
+        tool: 'nvd_get_cpe',
         args: { cpeNameId: CPE_ID },
         assert: (payload) => {
           const data = payload['data'] as Record<string, unknown>;
@@ -146,7 +146,7 @@ describe('MCP contract: tools/call for all ten tools', () => {
         },
       },
       {
-        tool: 'search_cpe_matches',
+        tool: 'nvd_search_cpe_matches',
         args: { cveId: 'CVE-2024-3094' },
         assert: (payload) => {
           expect(readItems(payload)[0]?.['matchCriteriaId']).toBe(MATCH_ID);
@@ -157,16 +157,16 @@ describe('MCP contract: tools/call for all ten tools', () => {
 
     expect(calls.map((call) => call.tool).sort()).toEqual(
       [
-        'get_cpe',
-        'get_cve',
-        'get_cve_history',
-        'get_cve_summary',
-        'get_cves',
-        'get_modified_cves',
-        'get_recent_cves',
-        'search_cpe_matches',
-        'search_cpes',
-        'search_cves',
+        'nvd_get_cpe',
+        'nvd_get_cve',
+        'nvd_get_cve_history',
+        'nvd_get_cve_summary',
+        'nvd_get_cves',
+        'nvd_get_modified_cves',
+        'nvd_get_recent_cves',
+        'nvd_search_cpe_matches',
+        'nvd_search_cpes',
+        'nvd_search_cves',
       ].sort(),
     );
 
@@ -186,11 +186,11 @@ describe('MCP contract: tools/call for all ten tools', () => {
   it('returns the ToolError contract as JSON text for domain errors', async () => {
     harness = await buildHarness();
 
-    const notFound = await harness.callTool('get_cve', { cveId: 'CVE-2024-3094' });
+    const notFound = await harness.callTool('nvd_get_cve', { cveId: 'CVE-2024-3094' });
     expect(notFound.isError).toBe(false);
 
     harness.nvd.on('/cves/2.0', { status: 200, body: cveResponse([]) });
-    const missing = await harness.callTool('get_cve', { cveId: 'CVE-2024-7777' });
+    const missing = await harness.callTool('nvd_get_cve', { cveId: 'CVE-2024-7777' });
     expect(missing.isError).toBe(true);
     expect(missing.structuredContent).toBeUndefined();
     expect(missing.error).toMatchObject({
@@ -204,7 +204,7 @@ describe('MCP contract: tools/call for all ten tools', () => {
   it('reports invalid cursors and invalid input without leaking internals', async () => {
     harness = await buildHarness();
 
-    const badCursor = await harness.callTool('search_cves', {
+    const badCursor = await harness.callTool('nvd_search_cves', {
       keyword: 'log4j',
       cursor: 'not.a-real-cursor-value',
     });
@@ -212,20 +212,20 @@ describe('MCP contract: tools/call for all ten tools', () => {
     expect(badCursor.error).toMatchObject({ code: 'INVALID_CURSOR', retryable: false });
     expect(badCursor.text).not.toContain('HMAC');
 
-    const invalidInput = await harness.callTool('search_cves', {
+    const invalidInput = await harness.callTool('nvd_search_cves', {
       cpeName: 'cpe:2.3:a:x:y:*:*:*:*:*:*:*:*',
       virtualMatchString: 'cpe:2.3:a:x:*',
     });
     expect(invalidInput.isError).toBe(true);
     expect(invalidInput.error?.['code']).toBe('INVALID_INPUT');
 
-    const upstreamError = (await harness.callTool('get_cpe', {
+    const upstreamError = (await harness.callTool('nvd_get_cpe', {
       cpeNameId: '99999999-2222-4333-8444-555555555555',
     })) as { isError: boolean; error?: Record<string, unknown> };
     // The mock always returns the fixture, so this call succeeds; a schema violation is next.
     expect(upstreamError.isError).toBe(false);
 
-    const schemaViolation = await harness.callTool('get_cves', { cveIds: [] });
+    const schemaViolation = await harness.callTool('nvd_get_cves', { cveIds: [] });
     expect(schemaViolation.isError).toBe(true);
     expect(schemaViolation.text).toContain('Input validation error');
   });
@@ -234,7 +234,7 @@ describe('MCP contract: tools/call for all ten tools', () => {
     harness = await createHarness({ apiKey: '[REDACTED:auth_header]' });
     harness.nvd.on('/cves/2.0', { status: 200, body: cveResponse([cveItem()]) });
 
-    const result = await harness.callTool('get_cve', { cveId: 'CVE-2024-3094' });
+    const result = await harness.callTool('nvd_get_cve', { cveId: 'CVE-2024-3094' });
     expect(result.isError).toBe(false);
     expect(result.text).not.toContain('super-secret-api-key');
     expect(result.text).not.toContain('stack');

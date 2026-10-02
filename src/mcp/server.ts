@@ -5,7 +5,7 @@ import { buildSuccessResult, extractCacheStatus } from './output.js';
 import type { ToolContext } from './tool-context.js';
 import { allTools } from './tools/index.js';
 
-export const SERVER_NAME = 'nvd-nist-mcp';
+export const SERVER_NAME = 'nist-nvd-mcp-server';
 export const SERVER_VERSION = '0.1.0';
 
 /**

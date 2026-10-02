@@ -81,7 +81,7 @@ function seedUpstream(harness: Harness, count: number): { ids: string[]; cpeIds:
   );
 
   harness.nvd.on('/cves/2.0', (request: NvdMockRequest) => {
-    // `cveIds` lookups (get_cve, get_cves, get_cve_history preflight).
+    // `cveIds` lookups (nvd_get_cve, nvd_get_cves, nvd_get_cve_history preflight).
     const cveIds = request.params['cveIds'];
     if (cveIds !== undefined) {
       const items = cveIds
@@ -90,7 +90,7 @@ function seedUpstream(harness: Harness, count: number): { ids: string[]; cpeIds:
         .map((id) => byId.get(id) ?? cveItem({ id }));
       return { status: 200, body: cveResponse(items, { totalResults: items.length }) };
     }
-    // Date-window feeds (search_cves, get_recent_cves, get_modified_cves).
+    // Date-window feeds (nvd_search_cves, nvd_get_recent_cves, nvd_get_modified_cves).
     const startIndex = Number(request.params['startIndex'] ?? '0');
     const pageSize = Number(request.params['resultsPerPage'] ?? '20');
     const items = Array.from(
@@ -149,7 +149,7 @@ describe('concurrency and load behaviour', () => {
 
     const results = await Promise.all(
       Array.from({ length: 25 }, () =>
-        timed(harness!, 'get_cve', 'get_cve', { cveId: 'CVE-2024-1000' }),
+        timed(harness!, 'nvd_get_cve', 'nvd_get_cve', { cveId: 'CVE-2024-1000' }),
       ),
     );
 
@@ -159,7 +159,7 @@ describe('concurrency and load behaviour', () => {
     // Every caller must observe the same record, served from the local cache afterwards.
     const payloads = await Promise.all(
       Array.from({ length: 25 }, () =>
-        harness!.callTool('get_cve', { cveId: 'CVE-2024-1000' }),
+        harness!.callTool('nvd_get_cve', { cveId: 'CVE-2024-1000' }),
       ),
     );
     const first = JSON.stringify(payloads[0]?.structuredContent);
@@ -169,7 +169,7 @@ describe('concurrency and load behaviour', () => {
     }
     expect(harness.nvd.countFor('/cves/2.0')).toBe(1);
 
-    report('thundering-herd-25x-get_cve', percentiles(results.map((r) => r.durationMs)), {
+    report('thundering-herd-25x-nvd_get_cve', percentiles(results.map((r) => r.durationMs)), {
       upstreamRequests: 1,
     });
   });
@@ -178,20 +178,20 @@ describe('concurrency and load behaviour', () => {
     harness = await createHarness({ nvdOverrides: FAST });
     const { ids } = seedUpstream(harness, 50);
 
-    const results = await Promise.all(ids.map((cveId) => timed(harness!, 'get_cve', 'get_cve', { cveId })));
+    const results = await Promise.all(ids.map((cveId) => timed(harness!, 'nvd_get_cve', 'nvd_get_cve', { cveId })));
 
     expect(results.filter((result) => !result.ok)).toEqual([]);
     expect(harness.nvd.countFor('/cves/2.0')).toBe(50);
 
     for (const cveId of ids) {
-      const payload = await harness.callTool('get_cve', { cveId });
+      const payload = await harness.callTool('nvd_get_cve', { cveId });
       expect(payload.isError).toBe(false);
       const data = payload.structuredContent?.['data'] as { id?: string } | undefined;
       expect(data?.id).toBe(cveId);
     }
 
     const stats = percentiles(results.map((result) => result.durationMs));
-    report('50-concurrent-distinct-get_cve', stats, { upstreamRequests: 50 });
+    report('50-concurrent-distinct-nvd_get_cve', stats, { upstreamRequests: 50 });
     expect(stats.p99).toBeLessThan(5_000);
   });
 
@@ -201,13 +201,13 @@ describe('concurrency and load behaviour', () => {
 
     const results = await Promise.all(
       Array.from({ length: 20 }, () =>
-        timed(harness!, 'search_cves', 'search_cves', { hasKev: true, pageSize: 5 }),
+        timed(harness!, 'nvd_search_cves', 'nvd_search_cves', { hasKev: true, pageSize: 5 }),
       ),
     );
 
     expect(results.filter((result) => !result.ok)).toEqual([]);
     expect(harness.nvd.countFor('/cves/2.0')).toBe(1);
-    report('thundering-herd-20x-search_cves', percentiles(results.map((r) => r.durationMs)), {
+    report('thundering-herd-20x-nvd_search_cves', percentiles(results.map((r) => r.durationMs)), {
       upstreamRequests: 1,
     });
   });
@@ -218,11 +218,11 @@ describe('concurrency and load behaviour', () => {
 
     const calls: Array<{ tool: string; args: Record<string, unknown> }> = [];
     for (let index = 0; index < 10; index += 1) {
-      calls.push({ tool: 'get_cve', args: { cveId: ids[index] ?? 'CVE-2024-1000' } });
-      calls.push({ tool: 'get_cve_summary', args: { cveId: ids[index + 10] ?? 'CVE-2024-1010' } });
-      calls.push({ tool: 'search_cves', args: { hasKev: index % 2 === 0, pageSize: 3 } });
-      calls.push({ tool: 'get_recent_cves', args: { pageSize: 3 } });
-      calls.push({ tool: 'get_modified_cves', args: { pageSize: 3 } });
+      calls.push({ tool: 'nvd_get_cve', args: { cveId: ids[index] ?? 'CVE-2024-1000' } });
+      calls.push({ tool: 'nvd_get_cve_summary', args: { cveId: ids[index + 10] ?? 'CVE-2024-1010' } });
+      calls.push({ tool: 'nvd_search_cves', args: { hasKev: index % 2 === 0, pageSize: 3 } });
+      calls.push({ tool: 'nvd_get_recent_cves', args: { pageSize: 3 } });
+      calls.push({ tool: 'nvd_get_modified_cves', args: { pageSize: 3 } });
     }
 
     const results = await Promise.all(calls.map((call) => timed(harness!, call.tool, call.tool, call.args)));
@@ -248,7 +248,7 @@ describe('concurrency and load behaviour', () => {
     harness = await createHarness({ nvdOverrides: { ...FAST, minIntervalMs } });
     const { ids } = seedUpstream(harness, 8);
 
-    await Promise.all(ids.map((cveId) => timed(harness!, 'get_cve', 'get_cve', { cveId })));
+    await Promise.all(ids.map((cveId) => timed(harness!, 'nvd_get_cve', 'nvd_get_cve', { cveId })));
 
     const arrivals = harness.nvd.requestsFor('/cves/2.0').map((request) => request.receivedAtMs);
     expect(arrivals).toHaveLength(8);
@@ -270,7 +270,7 @@ describe('concurrency and load behaviour', () => {
 
     await Promise.all(
       Array.from({ length: 30 }, () =>
-        timed(harness!, 'get_cve', 'get_cve', { cveId: 'CVE-2024-1001' }),
+        timed(harness!, 'nvd_get_cve', 'nvd_get_cve', { cveId: 'CVE-2024-1001' }),
       ),
     );
 
@@ -290,7 +290,7 @@ describe('concurrency and load behaviour', () => {
 
     const later = await Promise.all(
       Array.from({ length: 30 }, () =>
-        harness!.callTool('get_cve', { cveId: 'CVE-2024-1001' }),
+        harness!.callTool('nvd_get_cve', { cveId: 'CVE-2024-1001' }),
       ),
     );
     for (const payload of later) {
@@ -308,7 +308,7 @@ describe('concurrency and load behaviour', () => {
     const wave = async (): Promise<number[]> => {
       const samples: number[] = [];
       for (const cveId of ids) {
-        samples.push((await timed(harness!, 'get_cve', 'get_cve', { cveId })).durationMs);
+        samples.push((await timed(harness!, 'nvd_get_cve', 'nvd_get_cve', { cveId })).durationMs);
       }
       return samples;
     };
