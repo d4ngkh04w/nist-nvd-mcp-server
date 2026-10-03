@@ -95,6 +95,79 @@ def extract_xml_content(text: str, tag: str) -> str | None:
     return matches[-1].strip() if matches else None
 
 
+# --- answer grading ---------------------------------------------------------
+#
+# Grading is strict about content but lenient about presentation. A model that appends
+# an explanation to a correct value, wraps it in backticks or quotes, or omits the
+# `<response>` wrapper is still reporting the right fact, so scoring it wrong measures
+# the wrapper rather than the answer. Every lenient pass carries a label in the report
+# so it stays auditable, and `--strict-match` restores exact comparison.
+
+_ANSWER_DECORATION = "\"'`*_ \t\r\n"
+# Characters that may not touch a short answer for it to count as a whole token. `.` is
+# deliberately absent from the edge set so a sentence-final "9.8." still matches "9.8".
+_TOKEN_EDGE = "A-Za-z0-9_-"
+_SHORT_TAIL = "A-Za-z0-9_.-"
+_SHORT_ANSWER = re.compile(rf"^[{_TOKEN_EDGE}][{_SHORT_TAIL}]*$")
+
+
+def normalize_answer(text: str) -> str:
+    """Strip markdown decoration and surrounding whitespace, then casefold."""
+    return text.strip().strip(_ANSWER_DECORATION).strip().casefold()
+
+
+def answer_is_present(expected: str, text: str) -> bool:
+    """True when `expected` occurs in `text` as a whole token (or as a substring).
+
+    A short answer such as `9.8` or `50` must stand alone, so it is not found inside
+    `19.8` or `150`. A long answer (a CPE string, a phrase) is matched as a substring.
+    """
+    if not expected or not text:
+        return False
+    if _SHORT_ANSWER.match(expected):
+        return (
+            re.search(
+                rf"(?<![{_TOKEN_EDGE}]){re.escape(expected)}(?![{_TOKEN_EDGE}])",
+                text,
+            )
+            is not None
+        )
+    return expected in text
+
+
+def grade_answer(
+    expected: str,
+    response_value: str | None,
+    full_reply: str | None,
+    strict: bool = False,
+) -> tuple[int, str]:
+    """Return `(score, method)` for one task.
+
+    Methods: `exact`, `contained`, `prose`, `no_response`, `no_match`.
+    """
+    expected_norm = normalize_answer(expected)
+    response_norm = normalize_answer(response_value) if response_value else ""
+
+    if strict:
+        return (1, "exact") if response_norm == expected_norm else (0, "no_match")
+
+    if response_norm:
+        if response_norm == expected_norm:
+            return 1, "exact"
+        if answer_is_present(expected_norm, response_norm):
+            return 1, "contained"
+        return 0, "no_match"
+
+    # No `<response>` tag: the model answered in prose. The fact is still there, so the
+    # whole reply is scanned, but the method stays visible because the tag was requested.
+    # Caveat: a model that restates the question can mention the expected value here, so a
+    # `prose` pass is labelled for review rather than trusted blindly.
+    body = normalize_answer(full_reply) if full_reply else ""
+    if body and answer_is_present(expected_norm, body):
+        return 1, "prose"
+    return 0, "no_response"
+
+
 def stringify_tool_result(result: Any) -> str:
     """Flatten an MCP tool result into the text the model will read."""
     if result is None:
@@ -145,12 +218,41 @@ class ProviderError(RuntimeError):
     """Raised when a provider call fails."""
 
 
+REASONING_EFFORT_VALUES = ("minimal", "low", "medium", "high")
+
+
+def completion_kwargs(
+    model: str,
+    messages: list[dict[str, Any]],
+    openai_tools: list[dict[str, Any]],
+    reasoning_effort: str | None = None,
+) -> dict[str, Any]:
+    """Build the chat-completion arguments shared by every turn of the agent loop.
+
+    `reasoning_effort` is only sent when a level was requested, so a provider that does not know
+    the parameter keeps working. Reasoning models reject an explicit `temperature`, so it is
+    dropped in that case; `max_tokens` stays bounded for the models that still accept it.
+    """
+    kwargs: dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+        "tools": openai_tools,
+        "max_tokens": 4096,
+    }
+    if reasoning_effort is None:
+        kwargs["temperature"] = 0
+    else:
+        kwargs["reasoning_effort"] = reasoning_effort
+    return kwargs
+
+
 async def agent_loop_openai(
     client: Any,
     model: str,
     question: str,
     tools: list[dict[str, Any]],
     connection: Any,
+    reasoning_effort: str | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """Run the agent loop against an OpenAI-compatible chat completions endpoint."""
     messages: list[dict[str, Any]] = [
@@ -161,11 +263,7 @@ async def agent_loop_openai(
 
     response = await asyncio.to_thread(
         client.chat.completions.create,
-        model=model,
-        messages=messages,
-        tools=openai_tools,
-        max_tokens=4096,
-        temperature=0,
+        **completion_kwargs(model, messages, openai_tools, reasoning_effort),
     )
     messages.append(_assistant_message(response))
 
@@ -198,11 +296,7 @@ async def agent_loop_openai(
 
         response = await asyncio.to_thread(
             client.chat.completions.create,
-            model=model,
-            messages=messages,
-            tools=openai_tools,
-            max_tokens=4096,
-            temperature=0,
+            **completion_kwargs(model, messages, openai_tools, reasoning_effort),
         )
         messages.append(_assistant_message(response))
 
@@ -235,6 +329,7 @@ async def evaluate_single_task(
     tools: list[dict[str, Any]],
     connection: Any,
     task_index: int,
+    strict_match: bool = False,
 ) -> dict[str, Any]:
     """Evaluate a single QA pair with the given tools."""
     start_time = time.time()
@@ -246,13 +341,18 @@ async def evaluate_single_task(
     summary = extract_xml_content(response, "summary")
     feedback = extract_xml_content(response, "feedback")
 
+    score, match_method = grade_answer(
+        qa_pair["answer"], response_value, response, strict=strict_match
+    )
+
     duration_seconds = time.time() - start_time
 
     return {
         "question": qa_pair["question"],
         "expected": qa_pair["answer"],
         "actual": response_value,
-        "score": int(response_value == qa_pair["answer"]) if response_value else 0,
+        "score": score,
+        "match": match_method,
         "total_duration": duration_seconds,
         "tool_calls": tool_metrics,
         "num_tool_calls": sum(len(metrics["durations"]) for metrics in tool_metrics.values()),
@@ -267,12 +367,22 @@ REPORT_HEADER = """
 ## Summary
 
 - **Model**: {model}
+- **Reasoning Effort**: {reasoning_effort}
+- **Grading**: {grading}
 - **Accuracy**: {correct}/{total} ({accuracy:.1f}%)
+- **Lenient passes**: {lenient}
 - **Average Task Duration**: {average_duration_s:.2f}s
 - **Average Tool Calls per Task**: {average_tool_calls:.2f}
 - **Total Tool Calls**: {total_tool_calls}
 
 ---
+
+Accuracy counts a task correct when the ground truth appears in the answer, so a correct
+value with an appended explanation or a missing `<response>` wrapper is not scored wrong.
+`Lenient passes` lists those tasks with their method (`contained`, `prose`), so a pass that
+did not come from an exact match is always visible. A `prose` pass scans the whole reply and
+should be reviewed, since a model restating the question can mention the expected value; use
+`--strict-match` to disable every lenient pass.
 """
 
 TASK_TEMPLATE = """
@@ -282,6 +392,7 @@ TASK_TEMPLATE = """
 **Ground Truth Answer**: `{expected_answer}`
 **Actual Answer**: `{actual_answer}`
 **Correct**: {correct_indicator}
+**Match**: {match_method}
 **Duration**: {total_duration:.2f}s
 **Tool Calls**: {tool_calls}
 
@@ -301,6 +412,8 @@ async def run_evaluation(
     model: str,
     client: Any,
     agent_loop: Any,
+    reasoning_effort: str | None = None,
+    strict_match: bool = False,
 ) -> str:
     """Run every qa_pair in the evaluation file and build a Markdown report."""
     print("🚀 Starting Evaluation")
@@ -315,7 +428,9 @@ async def run_evaluation(
     for i, qa_pair in enumerate(qa_pairs):
         print(f"Processing task {i + 1}/{len(qa_pairs)}")
         try:
-            result = await evaluate_single_task(agent_loop, client, model, qa_pair, tools, connection, i)
+            result = await evaluate_single_task(
+                agent_loop, client, model, qa_pair, tools, connection, i, strict_match
+            )
         except Exception as e:
             print(f"  ⚠️  task {i + 1} failed: {e}")
             result = {
@@ -323,6 +438,7 @@ async def run_evaluation(
                 "expected": qa_pair["answer"],
                 "actual": f"ERROR: {e}",
                 "score": 0,
+                "match": "error",
                 "total_duration": 0.0,
                 "tool_calls": {},
                 "num_tool_calls": 0,
@@ -337,11 +453,21 @@ async def run_evaluation(
     average_tool_calls = sum(r["num_tool_calls"] for r in results) / len(results) if results else 0
     total_tool_calls = sum(r["num_tool_calls"] for r in results)
 
+    lenient = [
+        f"task {i + 1} ({r['match']})"
+        for i, r in enumerate(results)
+        if r["score"] and r["match"] != "exact"
+    ]
+
     report = REPORT_HEADER.format(
         model=model,
+        reasoning_effort=reasoning_effort or "default (not sent)",
+        grading="exact match only (--strict-match)" if strict_match
+        else "content match (exact, contained, or prose without the <response> tag)",
         correct=correct,
         total=len(results),
         accuracy=accuracy,
+        lenient=", ".join(lenient) if lenient else "none",
         average_duration_s=average_duration_s,
         average_tool_calls=average_tool_calls,
         total_tool_calls=total_tool_calls,
@@ -354,6 +480,7 @@ async def run_evaluation(
             expected_answer=qa_pair["answer"],
             actual_answer=result["actual"] or "N/A",
             correct_indicator="✅" if result["score"] else "❌",
+            match_method=result["match"],
             total_duration=result["total_duration"],
             tool_calls=json.dumps(result["tool_calls"], indent=2),
             summary=result["summary"] or "N/A",
@@ -422,6 +549,11 @@ Examples:
 
   # SSE MCP server
   python evaluation.py -t sse -u https://example.com/mcp -H "Authorization: Bearer token" eval.xml
+
+  # Reasoning model: pick how much thinking budget the provider may spend
+  python evaluation.py -t stdio -c node -a ../dist/main.js \\
+      --base-url http://127.0.0.1:20128/v1 \\
+      -m openai/gpt-5 --reasoning-effort high ../evaluations/nist-nvd-mcp-server.xml
         """,
     )
 
@@ -440,7 +572,20 @@ Examples:
     remote_group.add_argument("-u", "--url", help="MCP server URL (sse/http only)")
     remote_group.add_argument("-H", "--header", nargs="+", dest="headers", help="HTTP headers in 'Key: Value' format (sse/http only)")
 
+    parser.add_argument(
+        "--reasoning-effort",
+        choices=REASONING_EFFORT_VALUES,
+        help="Send reasoning_effort to the provider (default: omit it, and use temperature=0). "
+             "Reasoning models reject an explicit temperature, so it is dropped when this is set.",
+    )
     parser.add_argument("-o", "--output", type=Path, help="Output file for evaluation report (default: stdout)")
+    parser.add_argument(
+        "--strict-match",
+        action="store_true",
+        help="Score only an exact string match. By default a task is also correct when the "
+             "ground truth appears inside a longer answer or in prose without the <response> tag; "
+             "those passes are labelled in the report.",
+    )
 
     args = parser.parse_args()
 
@@ -472,7 +617,15 @@ Examples:
 
     async with connection:
         print("✅ Connected successfully")
-        report = await run_evaluation(args.eval_file, connection, args.model, client, agent_loop_openai)
+        report = await run_evaluation(
+            args.eval_file,
+            connection,
+            args.model,
+            client,
+            agent_loop_openai,
+            reasoning_effort=args.reasoning_effort,
+            strict_match=args.strict_match,
+        )
 
         if args.output:
             args.output.parent.mkdir(parents=True, exist_ok=True)
