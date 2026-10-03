@@ -2,8 +2,6 @@
  * Inference domain model for CVE records.
  */
 
-export type CvssSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
-
 export type CvssData = {
   version: string;
   vectorString: string;

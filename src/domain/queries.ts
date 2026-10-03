@@ -45,8 +45,6 @@ export type CveQuery = {
   isVulnerable?: boolean;
 };
 
-export type CveQuerySort = 'asc' | 'desc';
-
 /** Filters accepted by `/cvehistory/2.0`. */
 export type CveHistoryQuery = {
   cveId: string;
@@ -62,7 +60,7 @@ export type CpeQuery = {
   cpeNameId?: string;
   matchCriteriaId?: string;
   lastModified?: DateWindow;
-  /** Handled client-side: the upstream `includeDeprecated` parameter is rejected by the live API. */
+  /** Applied locally: `/cpes/2.0` answers HTTP 404 for the upstream `includeDeprecated` parameter. */
   includeDeprecated?: boolean;
 };
 
@@ -107,10 +105,10 @@ export type CachedPage<T> = {
   startIndex: number;
   /** Page size requested from NVD (for descending resources this may shrink on the last page). */
   resultsPerPage: number;
-  /** Number of upstream rows the page consumed, before client-side filtering. */
+  /** Number of upstream rows the page consumed, before local filtering. */
   upstreamCount: number;
-  /** Number of upstream rows removed by client-side filters. */
+  /** Number of upstream rows removed by local filters. */
   filteredOut: number;
-  /** Names of the filters that had to be applied client-side. */
+  /** Names of the filters that had to be applied locally. */
   clientSideFilters: string[];
 };

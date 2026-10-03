@@ -104,6 +104,29 @@ describe('createHmacCursorCodec', () => {
     });
   });
 
+  it('round-trips the optional page ordinal and omits it when absent', () => {
+    const clock = createFakeClock('2026-01-01T00:00:00.000Z');
+    const codec = createCodec(clock);
+
+    const withPage = codec.decode(
+      codec.encode({
+        resource: 'cves',
+        queryHash: QUERY_HASH,
+        startIndex: 40,
+        pageSize: 20,
+        page: 3,
+      }),
+    );
+    expect(withPage.page).toBe(3);
+
+    // A payload without an ordinal still decodes, so cursors minted before the field existed keep
+    // working and the caller falls back to page 1.
+    const withoutPage = codec.decode(
+      codec.encode({ resource: 'cves', queryHash: QUERY_HASH, startIndex: 0, pageSize: 20 }),
+    );
+    expect(withoutPage).not.toHaveProperty('page');
+  });
+
   it('produces different tokens for the same payload when time moves', () => {
     const clock = createFakeClock('2026-01-01T00:00:00.000Z');
     const codec = createCodec(clock);
@@ -135,7 +158,8 @@ describe('createHmacCursorCodec', () => {
     ).toString('base64url');
 
     const error = captureInvalidCursor(() => codec.decode(`${tampered}.${signature}`));
-    expect(error.message).toBe('Cursor signature is invalid');
+    expect(error.message).toContain('Cursor signature is invalid');
+    expect(error.details?.['reason']).toBe('signature');
   });
 
   it('rejects a tampered signature', () => {
@@ -149,7 +173,31 @@ describe('createHmacCursorCodec', () => {
     const error = captureInvalidCursor(() =>
       codec.decode(`${payload}.${signature.slice(0, -1)}${replacement}`),
     );
-    expect(error.message).toBe('Cursor signature is invalid');
+    expect(error.message).toContain('Cursor signature is invalid');
+    expect(error.details?.['reason']).toBe('signature');
+  });
+
+  it('separates a truncated copy from a substituted character in the error', () => {
+    const clock = createFakeClock('2026-01-01T00:00:00.000Z');
+    const codec = createCodec(clock);
+    const token = codec.encode({ resource: 'cves', queryHash: QUERY_HASH, startIndex: 20, pageSize: 20 });
+
+    // One character dropped: the signature part is short, which the message reports explicitly.
+    const truncated = captureInvalidCursor(() => codec.decode(token.slice(0, -1)));
+    expect(truncated.details?.['reason']).toBe('signature');
+    expect(truncated.details?.['signatureLength']).toBe(42);
+    expect(truncated.message).toContain('truncated or re-encoded');
+    expect(truncated.message).toContain('expected 43');
+
+    // One character substituted: the length still matches, so the message blames alteration alone.
+    const flippedAt = 40;
+    const substituted = captureInvalidCursor(() =>
+      codec.decode(`${token.slice(0, flippedAt)}${token[flippedAt] === 'a' ? 'b' : 'a'}${token.slice(flippedAt + 1)}`),
+    );
+    expect(substituted.details?.['reason']).toBe('signature');
+    expect(substituted.details?.['signatureLength']).toBe(43);
+    expect(substituted.message).toContain('altered in transit');
+    expect(substituted.message).toContain('keeping pageSize and every filter unchanged');
   });
 
   it('rejects garbage tokens and malformed segments', () => {
@@ -175,7 +223,8 @@ describe('createHmacCursorCodec', () => {
     clock.advance(TTL_SECONDS * 1_000 + 1);
 
     const error = captureInvalidCursor(() => codec.decode(token));
-    expect(error.message).toBe('Cursor has expired');
+    expect(error.message).toContain('Cursor has expired');
+    expect(error.details?.['reason']).toBe('expired');
   });
 
   it('rejects a token signed with a different secret', () => {
@@ -190,7 +239,8 @@ describe('createHmacCursorCodec', () => {
     });
 
     const error = captureInvalidCursor(() => decoder.decode(token));
-    expect(error.message).toBe('Cursor signature is invalid');
+    expect(error.message).toContain('Cursor signature is invalid');
+    expect(error.details?.['reason']).toBe('signature');
   });
 
   it('rejects oversized tokens', () => {
@@ -241,26 +291,36 @@ describe('createHmacCursorCodec', () => {
     const clock = createFakeClock('2026-01-01T00:00:00.000Z');
     const codec = createCodec(clock);
 
-    const cases: Array<{ payload: string; message: string }> = [
-      { payload: 'not json', message: 'Cursor payload is malformed' },
-      { payload: JSON.stringify([1, 2, 3]), message: 'Cursor payload is malformed' },
-      { payload: cursorPayload({ version: 99 }), message: 'Cursor version is not supported' },
-      { payload: cursorPayload({ resource: '' }), message: 'Cursor resource is invalid' },
-      { payload: cursorPayload({ resource: 42 }), message: 'Cursor resource is invalid' },
-      { payload: cursorPayload({ queryHash: 'md5:abc' }), message: 'Cursor query hash is invalid' },
-      { payload: cursorPayload({ startIndex: 1.5 }), message: 'Cursor start index is out of range' },
-      { payload: cursorPayload({ startIndex: '0' }), message: 'Cursor start index is out of range' },
-      { payload: cursorPayload({ pageSize: '20' }), message: 'Cursor page size is out of range' },
-      { payload: cursorPayload({ pageSize: 1.5 }), message: 'Cursor page size is out of range' },
+    const cases: Array<{ payload: string; message: string; reason: string }> = [
+      { payload: 'not json', message: 'Cursor payload is malformed', reason: 'payload' },
+      { payload: JSON.stringify([1, 2, 3]), message: 'Cursor payload is malformed', reason: 'payload' },
+      { payload: cursorPayload({ version: 99 }), message: 'Cursor version is not supported', reason: 'version' },
+      { payload: cursorPayload({ resource: '' }), message: 'Cursor resource is invalid', reason: 'resource' },
+      { payload: cursorPayload({ resource: 42 }), message: 'Cursor resource is invalid', reason: 'resource' },
+      { payload: cursorPayload({ queryHash: 'md5:abc' }), message: 'Cursor query hash is invalid', reason: 'query_hash' },
+      { payload: cursorPayload({ startIndex: 1.5 }), message: 'Cursor start index is out of range', reason: 'start_index' },
+      { payload: cursorPayload({ startIndex: '0' }), message: 'Cursor start index is out of range', reason: 'start_index' },
+      { payload: cursorPayload({ pageSize: '20' }), message: 'Cursor page size is out of range', reason: 'page_size' },
+      { payload: cursorPayload({ pageSize: 1.5 }), message: 'Cursor page size is out of range', reason: 'page_size' },
       {
         payload: cursorPayload({ pageSize: 1_001 }),
         message: 'Cursor page size is out of range',
+        reason: 'page_size',
       },
-      { payload: cursorPayload({ issuedAt: 'nope' }), message: 'Cursor timestamps are invalid' },
-      { payload: cursorPayload({ expiresAt: 'nope' }), message: 'Cursor timestamps are invalid' },
+      { payload: cursorPayload({ issuedAt: 'nope' }), message: 'Cursor timestamps are invalid', reason: 'timestamps' },
+      { payload: cursorPayload({ page: 0 }), message: 'Cursor page ordinal is invalid', reason: 'payload' },
+      { payload: cursorPayload({ page: 1.5 }), message: 'Cursor page ordinal is invalid', reason: 'payload' },
+      { payload: cursorPayload({ page: '2' }), message: 'Cursor page ordinal is invalid', reason: 'payload' },
+      { payload: cursorPayload({ expiresAt: 'nope' }), message: 'Cursor timestamps are invalid', reason: 'timestamps' },
       {
         payload: cursorPayload({ expiresAt: '2025-12-31T23:59:59.000Z' }),
         message: 'Cursor has expired',
+        reason: 'expired',
+      },
+      {
+        payload: cursorPayload({ resolvedWindow: { start: 'nope', end: 'nope' } }),
+        message: 'Cursor date window is invalid',
+        reason: 'window',
       },
     ];
 
@@ -268,7 +328,8 @@ describe('createHmacCursorCodec', () => {
       const error = captureInvalidCursor(() =>
         codec.decode(signPayload(SECRET, testCase.payload)),
       );
-      expect(error.message).toBe(testCase.message);
+      expect(error.message).toContain(testCase.message);
+      expect(error.details?.['reason']).toBe(testCase.reason);
     }
   });
 

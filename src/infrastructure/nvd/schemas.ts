@@ -218,13 +218,9 @@ export const nvdCpeMatchResponseSchema = z
   .loose();
 
 export type NvdCveItem = z.infer<typeof nvdCveItemSchema>;
-export type NvdCveResponse = z.infer<typeof nvdCveResponseSchema>;
 export type NvdCveHistoryItem = z.infer<typeof nvdCveHistoryItemSchema>;
-export type NvdCveHistoryResponse = z.infer<typeof nvdCveHistoryResponseSchema>;
 export type NvdCpeItem = z.infer<typeof nvdCpeItemSchema>;
-export type NvdCpeResponse = z.infer<typeof nvdCpeResponseSchema>;
 export type NvdCpeMatchItem = z.infer<typeof nvdCpeMatchItemSchema>;
-export type NvdCpeMatchResponse = z.infer<typeof nvdCpeMatchResponseSchema>;
 
 /** Validates a decoded NVD payload, converting schema failures into a structured tool error. */
 export function parseNvdResponse<T>(schema: z.ZodType<T>, payload: unknown, endpoint: string): T {

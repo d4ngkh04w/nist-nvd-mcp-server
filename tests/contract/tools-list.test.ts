@@ -93,8 +93,9 @@ describe('MCP contract: tools/list', () => {
       const pagination = properties['pagination'] as { properties?: Record<string, unknown> } | undefined;
       expect(pagination?.properties, `${tool.name}.pagination`).toBeDefined();
       expect(Object.keys(pagination?.properties ?? {}).sort()).toEqual(
-        ['hasMore', 'nextCursor', 'pageSize', 'returned', 'totalResults'].sort(),
+        ['hasMore', 'nextCursor', 'page', 'pageCount', 'pageSize', 'returned', 'totalResults'].sort(),
       );
+      // The upstream offset stays opaque: the position is reported as an ordinal instead.
       expect(Object.keys(pagination?.properties ?? {})).not.toContain('startIndex');
     }
 
@@ -124,9 +125,9 @@ describe('MCP contract: tools/list', () => {
     const response = await harness.client?.listTools();
     const tools = (response?.tools ?? []) as ToolDescriptor[];
 
-    // `vulnStatuses`, `isVulnerable` and `kevStartDate`/`kevEndDate` are forwarded to NVD,
-    // so the model must not be told they run locally. `meta.pagination` does not exist:
-    // the cursor lives at the top-level `pagination.nextCursor`.
+    // `vulnStatuses`, `isVulnerable` and `kevStartDate`/`kevEndDate` reach NVD, so no description
+    // may claim they run locally. `meta.pagination` does not exist: the cursor lives at the
+    // top-level `pagination.nextCursor`.
     const staleClaims = [
       /NVD (?:API )?rejects this parameter/,
       /no KEV date filter/,

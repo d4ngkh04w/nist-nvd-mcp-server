@@ -31,5 +31,3 @@ export const allTools: readonly AnyToolDefinition[] = [
 ];
 
 export const TOOL_COUNT = allTools.length;
-
-export const TOOL_NAMES: readonly string[] = allTools.map((tool) => tool.name);

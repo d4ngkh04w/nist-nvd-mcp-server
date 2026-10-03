@@ -32,7 +32,7 @@ type QueueEntry = {
  *
  * With the anonymous NVD key a queued request waits `minIntervalMs`, so an unbounded queue would
  * turn one burst into minutes of silent waiting and unbounded memory. Rejecting the overflow keeps
- * the wait per caller predictable and the failure visible.
+ * the wait per submission predictable and the failure visible.
  */
 const DEFAULT_MAX_QUEUE_DEPTH = 200;
 
@@ -43,7 +43,7 @@ const DEFAULT_MAX_QUEUE_DEPTH = 200;
  * - at most `maxConcurrency` tasks run concurrently;
  * - consecutive task starts are separated by at least `minIntervalMs`;
  * - the queue never exceeds `maxQueueDepth` and a submission beyond that is rejected immediately;
- * - `dispose()` settles every queued task instead of leaving its caller waiting forever.
+ * - `dispose()` settles every queued task instead of leaving a promise pending forever.
  *
  * Cache hits never reach this limiter, so cached reads stay instant.
  */

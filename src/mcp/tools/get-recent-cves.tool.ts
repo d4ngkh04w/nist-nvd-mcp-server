@@ -1,25 +1,16 @@
 import { z } from 'zod';
 
-import { MAX_DATE_RANGE_DAYS, PAGE_SIZE_LIMITS } from '../../config/defaults.js';
+import { MAX_DATE_RANGE_DAYS } from '../../config/defaults.js';
 import {
   cacheMetaOutput,
-  cpeMatchStringInput,
-  cursorInput,
+  cveFeedPageInput,
   cveSummaryOutput,
-  cvssFilterInput,
-  pageSizeInput,
+  feedFiltersInput,
+  feedWindowInput,
   paginationOutput,
   readOnlyAnnotations,
 } from '../tool-schemas.js';
 import { defineTool } from '../tool.js';
-
-const sharedFeedFields = {
-  keyword: z.string().min(1).optional().describe('Optional keyword filter'),
-  cpeName: cpeMatchStringInput.optional().describe('Optional CPE name filter'),
-  cvss: cvssFilterInput.optional(),
-  pageSize: pageSizeInput(PAGE_SIZE_LIMITS.cves.max, PAGE_SIZE_LIMITS.cves.default),
-  cursor: cursorInput,
-};
 
 /**
  * `nvd_get_recent_cves` - newly published CVEs, newest first.
@@ -31,26 +22,24 @@ export const getRecentCvesTool = defineTool({
   name: 'nvd_get_recent_cves',
   title: 'Get recently published CVEs',
   description: [
-    'Return CVEs ordered by publication date, newest first (ordering "published_desc").',
+    'Return CVEs ordered by publication date, newest first. This feed always reports meta.ordering as',
+    '"published_desc" on every page. Across the suite meta.ordering is one of published_desc,',
+    'last_modified_desc, change_created_asc or nvd_default, the last meaning no server-side reordering',
+    'and being what the search and CPE tools report.',
     'Defaults to the last 7 days: use `days` or an explicit `start`+`end` window (mutually exclusive,',
     `maximum ${MAX_DATE_RANGE_DAYS} days).`,
-    'Cached for 5 minutes; paginate by passing pagination.nextCursor back as `cursor` with the same',
-    'filters and pageSize - the resolved window travels inside the cursor, so a relative `days` window',
-    'stays stable across pages.',
+    'The cursor already carries the resolved window, so a relative window stays stable across pages and',
+    'repeating `days` is optional; with a cursor, omitting `days`/`start`/`end` reuses the frozen window',
+    'while a different explicit window is rejected with INVALID_CURSOR rather than silently re-anchored.',
+    'Cached for 5 minutes. For multi-page traversal pass fields:["id","published"] to count or list',
+    'identifiers cheaply, and keep the same `fields` on every page so the pages stay comparable.',
+    'Pass metaOnly:true for pagination and meta without items; pagination.page and pagination.pageCount',
+    'still report the position and the estimated page total.',
   ].join(' '),
   inputShape: {
-    ...sharedFeedFields,
-    start: z.string().min(1).optional().describe('ISO-8601 window start (use with `end`)'),
-    end: z.string().min(1).optional().describe('ISO-8601 window end (use with `start`)'),
-    days: z
-      .number()
-      .int()
-      .min(1)
-      .max(MAX_DATE_RANGE_DAYS)
-      .optional()
-      .describe('Relative window in days counted back from now (default 7)'),
-    kevOnly: z.boolean().optional().describe('Only CISA KEV entries'),
-    noRejected: z.boolean().optional().describe('Exclude rejected CVEs'),
+    ...feedWindowInput,
+    ...feedFiltersInput,
+    ...cveFeedPageInput,
   },
   outputShape: {
     items: z.array(cveSummaryOutput),

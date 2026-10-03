@@ -4,7 +4,7 @@ import { differenceInDays, parseIsoDate, toIso } from '../shared/time.js';
 /** `CVE-YYYY-NNNN(N)` per the CVE ID syntax. */
 export const CVE_ID_PATTERN = /^CVE-\d{4}-\d{4,}$/;
 
-/** Case-insensitive variant used for model-facing input validation (values are uppercased later). */
+/** Case-insensitive variant used for input validation (values are uppercased later). */
 export const CVE_ID_PATTERN_CASE_INSENSITIVE = /^CVE-\d{4}-\d{4,}$/i;
 
 export const UUID_PATTERN =
@@ -12,6 +12,60 @@ export const UUID_PATTERN =
 
 /** `cpe:2.3:...` (formatted string) or `cpe:/...` (URI binding). */
 export const CPE_MATCH_STRING_PATTERN = /^cpe:(?:2\.[23]:|\/)/i;
+
+/**
+ * Component count of a complete CPE 2.3 formatted string:
+ * `cpe`, `2.3`, part, vendor, product, version, update, edition, language, sw_edition, target_sw,
+ * target_hw, other.
+ *
+ * The NVD `/cpematch/2.0` endpoint answers HTTP 404 for a longer string (for example a CPE name with
+ * one extra trailing `*`), which is indistinguishable from "no such criteria" unless the count is
+ * checked before the request.
+ */
+export const CPE_23_MAX_COMPONENTS = 13;
+
+/** `YYYY-MM-DD` with no time component. */
+export const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+export function isDateOnly(value: string): boolean {
+  return DATE_ONLY_PATTERN.test(value.trim());
+}
+
+/**
+ * End of the day for a `YYYY-MM-DD` string.
+ *
+ * Used for KEV date windows: NVD compares the window against the KEV `dateAdded` midnight
+ * timestamp, so a date-only `end` bound resolved to `00:00:00` yields an empty range.
+ */
+export function endOfDayIso(dateOnly: string): string {
+  return `${dateOnly.trim()}T23:59:59.999Z`;
+}
+
+/** Number of colon separated components of a CPE 2.3 string, or `null` for the `cpe:/` URI form. */
+export function countCpe23Components(value: string): number | null {
+  if (!/^cpe:2\.3:/i.test(value.trim())) {
+    return null;
+  }
+  return splitCpeComponents(value.trim()).length;
+}
+
+/**
+ * Rejects a CPE string that the NVD endpoints would answer with HTTP 404.
+ *
+ * Applied to `matchStringSearch` (`/cpematch/2.0`) and to the dictionary-side `cpeMatchString`
+ * (`/cpes/2.0`) so the failure is a precise `INVALID_INPUT` instead of an opaque
+ * `UPSTREAM_BAD_RESPONSE`.
+ */
+export function assertCpeComponentCount(value: string, field: string): void {
+  const components = countCpe23Components(value);
+  if (components === null || components <= CPE_23_MAX_COMPONENTS) {
+    return;
+  }
+  throw DomainError.invalidInput(
+    `${field} has ${components} colon separated components; a CPE 2.3 string has at most ${CPE_23_MAX_COMPONENTS} (cpe:2.3:part:vendor:product:version:update:edition:language:sw_edition:target_sw:target_hw:other) and the NVD API answers HTTP 404 for longer strings`,
+    { field, components, maxComponents: CPE_23_MAX_COMPONENTS },
+  );
+}
 
 export function normalizeCveId(value: string): string {
   return value.trim().toUpperCase();
@@ -73,6 +127,11 @@ export type DateWindowResolution = {
 
 /**
  * Validates a resolved date window against the NVD hard limit (120 days).
+ *
+ * A date-only end (`2021-12-31`) is widened to `23:59:59.999`: NVD timestamps carry a real clock
+ * time, so resolving a bare date to midnight silently drops every record published during that day
+ * and turns a single-day range into an empty interval. The span check runs on the values as given,
+ * so widening never pushes an accepted window past `maxDays`.
  */
 export function validateDateWindow(
   window: { start: string; end: string },
@@ -98,7 +157,8 @@ export function validateDateWindow(
       { field: options.field, maxDays: options.maxDays, requestedDays: Math.ceil(days) },
     );
   }
-  return { startIso: toIso(start), endIso: toIso(end), days };
+  const endIso = isDateOnly(window.end) ? endOfDayIso(window.end) : toIso(end);
+  return { startIso: toIso(start), endIso, days };
 }
 
 /**
@@ -247,7 +307,7 @@ const NVD_STATUS_PARAM_BY_KEY: Readonly<Record<string, string>> = {
   rejected: 'Rejected',
 };
 
-/** Converts a caller-supplied status into the spelling the NVD API expects in `vulnStatuses`. */
+/** Converts a status into the spelling the NVD API expects in `vulnStatuses`. */
 export function toNvdStatusParam(value: string): string {
   const trimmed = value.trim();
   const known = NVD_STATUS_PARAM_BY_KEY[canonicalStatusKey(trimmed)];

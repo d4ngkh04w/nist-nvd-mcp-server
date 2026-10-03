@@ -146,7 +146,3 @@ export function toDomainError(value: unknown): DomainError {
 export function toToolError(value: unknown): ToolError {
   return toDomainError(value).toToolError();
 }
-
-export function isRetryableCode(code: ToolErrorCode): boolean {
-  return RETRYABLE_CODES.has(code);
-}

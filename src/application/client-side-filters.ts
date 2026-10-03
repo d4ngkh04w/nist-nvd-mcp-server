@@ -8,17 +8,17 @@ export type ClientFilterOutcome<T> = {
 };
 
 /**
- * Local filters that remain after every supported NVD parameter is forwarded upstream.
+ * Local filtering that the NVD API cannot express.
  *
- * CVE filters (`vulnStatuses`, `isVulnerable`, `kevStartDate`/`kevEndDate`) are forwarded to NVD,
- * so no CVE-side local filtering happens any more. The only remaining local policy is the CPE
- * dictionary: the CPE API rejects `includeDeprecated` with HTTP 404 and still returns deprecated
+ * `/cves/2.0` accepts every supported CVE filter upstream (`vulnStatuses`, `isVulnerable`,
+ * `kevStartDate`/`kevEndDate`), so CVE pages are never filtered locally. The CPE dictionary is the
+ * exception: `/cpes/2.0` answers HTTP 404 for `includeDeprecated` while still returning deprecated
  * entries in its default result set, so the include/exclude decision is applied here and reported
  * through `meta.filtersAppliedClientSide` / `meta.filteredOut`.
  *
- * Because a local filter can drop rows from an upstream page, the top-level `pagination.totalResults`
- * is the *upstream* total (pre-filter) and `pagination.hasMore` tracks the upstream offset walk,
- * not the size of the filtered set.
+ * A local filter can drop rows from an upstream page, so `pagination.totalResults` is the upstream
+ * total counted before the filter, and `pagination.hasMore` follows the upstream offset walk rather
+ * than the size of the filtered set.
  */
 export function applyCpeQueryFilters(
   items: readonly CpeRecord[],

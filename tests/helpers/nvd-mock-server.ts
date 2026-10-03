@@ -25,7 +25,7 @@ export type NvdMockResponse = {
   headers?: Record<string, string>;
   /** Delay before writing the response. */
   delayMs?: number;
-  /** Never answer: the client must hit its request timeout. */
+  /** Never answer: the pending request must hit the request timeout. */
   hang?: boolean;
 };
 
@@ -148,7 +148,7 @@ export class NvdMockServer {
     const scripted = responder?.(logged, indexForPath) ?? this.fallback;
 
     if (scripted.hang === true) {
-      // Deliberately leave the request unanswered so the client times out.
+      // Deliberately leave the request unanswered so it times out.
       return;
     }
 

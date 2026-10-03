@@ -2,6 +2,7 @@ import type { AppConfig } from '../config/env.js';
 import type { CacheMeta } from '../domain/cache.js';
 import type { CpeMatchRecord } from '../domain/cpe.js';
 import { DomainError } from '../domain/errors.js';
+import { CPE_MATCH_FIELDS, projectFieldList, resolveFields } from '../domain/field-projection.js';
 import type { CursorCodec, CursorPayload, PaginationMeta, PaginationResource } from '../domain/pagination.js';
 import type {
   Clock,
@@ -11,6 +12,7 @@ import type {
 } from '../domain/ports.js';
 import type { CachedPage, CpeMatchQuery, DateWindow, NvdPageRequest } from '../domain/queries.js';
 import {
+  assertCpeComponentCount,
   isValidCpeMatchString,
   isValidCveId,
   isValidUuid,
@@ -24,6 +26,7 @@ import type { Logger } from '../shared/logger.js';
 import { addSeconds, toIso } from '../shared/time.js';
 import type { CachedResourceLoader } from './cached-resource-loader.js';
 import type { ResponseMeta } from './response-meta.js';
+import { buildPaginationMeta } from './response-meta.js';
 import { mergeWarnings, serializeRawPayload } from './support.js';
 
 export type SearchCpeMatchesInput = {
@@ -33,6 +36,10 @@ export type SearchCpeMatchesInput = {
   lastModified?: DateWindow;
   pageSize?: number;
   cursor?: string;
+  /** Top-level `items` fields to keep; `undefined` keeps all of them. */
+  fields?: string[];
+  /** Return the pagination block without serializing the items themselves. */
+  metaOnly?: boolean;
 };
 
 export type CpeMatchCollectionOutput = {
@@ -57,6 +64,7 @@ export class CpeMatchService {
   constructor(private readonly deps: CpeMatchServiceDeps) {}
 
   async searchCpeMatches(input: SearchCpeMatchesInput): Promise<CpeMatchCollectionOutput> {
+    const fields = resolveFields(input.fields, CPE_MATCH_FIELDS, 'nvd_search_cpe_matches');
     const query = this.buildQuery(input);
     const pageSize = resolvePageSize(
       input.pageSize,
@@ -84,12 +92,14 @@ export class CpeMatchService {
 
     const nextStartIndex = page.startIndex + page.upstreamCount;
     const hasMore = page.upstreamCount > 0 && nextStartIndex < page.totalResults;
+    const currentPage = cursor?.page ?? 1;
 
     return {
-      items: page.items,
-      pagination: {
+      items: input.metaOnly === true ? [] : projectFieldList(page.items, fields),
+      pagination: buildPaginationMeta({
+        page: currentPage,
         pageSize,
-        returned: page.items.length,
+        returned: input.metaOnly === true ? 0 : page.items.length,
         totalResults: page.totalResults,
         hasMore,
         nextCursor: hasMore
@@ -98,13 +108,15 @@ export class CpeMatchService {
               queryHash: identity.queryHash,
               startIndex: nextStartIndex,
               pageSize,
+              page: currentPage + 1,
             })
           : null,
-      },
+      }),
       meta: {
         ...meta,
         warnings: mergeWarnings(meta.warnings),
         ordering: 'nvd_default',
+        ...(fields === undefined ? {} : { fieldsApplied: [...fields] }),
       },
     };
   }
@@ -135,11 +147,24 @@ export class CpeMatchService {
       const matchString = input.matchStringSearch.trim();
       if (!isValidCpeMatchString(matchString)) {
         throw DomainError.invalidInput(
-          'matchStringSearch must be a complete CPE match string (for example "cpe:2.3:a:vendor:product:*:*:*:*:*:*:*:*"); the NVD API rejects partial keywords and version ranges',
+          'matchStringSearch must be a CPE 2.3 match string such as cpe:2.3:a:vendor:product:*:*:*:*:*:*:*:* (a CPE 2.2 cpe:/ URI is also accepted); the NVD API rejects bare keywords and version ranges',
           { matchStringSearch: input.matchStringSearch },
         );
       }
+      // A 14+ component string (a CPE name with an extra trailing `*`) makes the upstream endpoint
+      // answer HTTP 404, which is indistinguishable from "no such criteria".
+      assertCpeComponentCount(matchString, 'matchStringSearch');
       query.matchStringSearch = matchString;
+    }
+
+    // `/cpematch/2.0` answers HTTP 500 for every combination of `cveId` and `matchStringSearch`,
+    // while each filter works on its own, so the pairing is rejected before the request instead
+    // of being retried as a transient outage.
+    if (query.cveId !== undefined && query.matchStringSearch !== undefined) {
+      throw DomainError.invalidInput(
+        'cveId and matchStringSearch cannot be combined: the NVD CPE match API answers HTTP 500 for that pairing. Search by matchStringSearch alone, then confirm the matchCriteriaId in the CVE configuration tree with nvd_get_cve.',
+        { cveId: query.cveId, matchStringSearch: query.matchStringSearch },
+      );
     }
 
     if (input.lastModified !== undefined) {
@@ -248,6 +273,7 @@ export class CpeMatchService {
     if (payload.queryHash !== queryHash) {
       throw DomainError.invalidCursor(
         'Cursor does not match the supplied filters; restart pagination without a cursor',
+        { reason: 'filter_mismatch' },
       );
     }
     if (payload.pageSize > maxPageSize) {

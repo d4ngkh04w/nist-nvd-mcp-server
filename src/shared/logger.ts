@@ -1,4 +1,4 @@
-import { LOG_LEVELS, type LogLevel } from '../config/defaults.js';
+import type { LogLevel } from '../config/defaults.js';
 
 const LEVEL_WEIGHT: Record<LogLevel, number> = {
   debug: 10,
@@ -150,10 +150,6 @@ function defaultSink(line: string): void {
 
 export function createStderrLogger(level: LogLevel, bindings: LogFields = {}): Logger {
   return new Logger({ level, bindings, includeStack: level === 'debug' });
-}
-
-export function isValidLogLevel(value: string): value is LogLevel {
-  return (LOG_LEVELS as readonly string[]).includes(value);
 }
 
 /**

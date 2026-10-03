@@ -1,5 +1,3 @@
-import { fileURLToPath } from 'node:url';
-
 export const ISO_DATE_PATTERN =
   /^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/;
 
@@ -60,8 +58,4 @@ export function ageSeconds(isoTimestamp: string, now: Date): number {
 
 export function differenceInDays(start: Date, end: Date): number {
   return (end.getTime() - start.getTime()) / 86_400_000;
-}
-
-export function fileUrlToPath(importMetaUrl: string): string {
-  return fileURLToPath(importMetaUrl);
 }

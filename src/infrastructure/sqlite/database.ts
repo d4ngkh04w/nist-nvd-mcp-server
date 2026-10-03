@@ -11,7 +11,7 @@ export type SqlRow = Record<string, SQLOutputValue>;
 /**
  * Minimal synchronous SQLite surface shared by the repositories and the migrator.
  *
- * It exists so every caller uses the same prepared-statement API, the same transaction
+ * It exists so every repository uses the same prepared-statement API, the same transaction
  * semantics and the same place where infrastructure failures become `DomainError`s.
  */
 export type SqliteDatabase = {
@@ -162,7 +162,8 @@ function closeQuietly(raw: DatabaseSync): void {
       raw.close();
     }
   } catch {
-    // The configuration error is reported by the caller; closing is best effort.
+    // Reached only while unwinding an open failure, which is reported by the `throw` below;
+    // closing the half-open handle is best effort.
   }
 }
 
@@ -180,8 +181,8 @@ export function readRowText(row: SqlRow, column: string): string | null {
 /**
  * Reads a persisted `raw_json` column.
  *
- * Missing rows, non-textual values and blank strings are treated as absent (`null`) so callers
- * never treat an empty payload as a usable raw response.
+ * Missing rows, non-textual values and blank strings are treated as absent (`null`) so an empty
+ * payload is never mistaken for a usable raw response.
  */
 export function readStoredRawJson(row: SqlRow | undefined): string | null {
   const value = row?.['raw_json'];

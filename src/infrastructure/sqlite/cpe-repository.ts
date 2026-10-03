@@ -97,7 +97,7 @@ export class SqliteCpeRepository implements CpeRepositoryPort {
    * Looks a record up by its CPE name.
    *
    * The exact match uses the `cpe_name` index; when it misses, an ASCII case-insensitive
-   * comparison runs as a fallback because models may echo a CPE name in any case.
+   * comparison runs as a fallback because CPE names reach this layer in mixed case.
    */
   findByName(cpeName: string): StoredValue<CpeRecord> | null {
     try {

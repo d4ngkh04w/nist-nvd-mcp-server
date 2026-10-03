@@ -20,6 +20,8 @@ export type CveFixtureOverrides = {
   kev?: boolean;
   referenceCount?: number;
   withConfiguration?: boolean;
+  /** Number of CPE match entries in the single configuration node (default 1). */
+  affectedProductCount?: number;
   /** Build a multi-level configuration tree (root without cpeMatch, nested `children`). */
   withNestedConfiguration?: boolean;
   withV2Metric?: boolean;
@@ -161,19 +163,21 @@ export function cveItem(overrides: CveFixtureOverrides = {}): Record<string, unk
   if (overrides.withNestedConfiguration === true) {
     item['configurations'] = nestedConfiguration();
   } else if (overrides.withConfiguration !== false) {
+    const affectedProductCount = overrides.affectedProductCount ?? 1;
     item['configurations'] = [
       {
         nodes: [
           {
             operator: 'OR',
             negate: false,
-            cpeMatch: [
-              {
-                vulnerable: criteriaVulnerable,
-                criteria,
-                matchCriteriaId: '73F1DAD7-F362-4C5B-B980-2E5313C369DA',
-              },
-            ],
+            cpeMatch: Array.from({ length: affectedProductCount }, (_, index) => ({
+              vulnerable: criteriaVulnerable,
+              criteria:
+                affectedProductCount === 1
+                  ? criteria
+                  : `cpe:2.3:a:vendor:product-${index}:1.0:*:*:*:*:*:*:*`,
+              matchCriteriaId: '73F1DAD7-F362-4C5B-B980-2E5313C369DA',
+            })),
           },
         ],
       },

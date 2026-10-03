@@ -44,8 +44,8 @@ async function main(): Promise<void> {
     void shutdown('transport_closed');
   };
 
-  // `StdioServerTransport` only listens for `data`/`error`, so a client that goes away (closed pipe,
-  // killed process) would otherwise leave the server running with the database file still open.
+  // `StdioServerTransport` only listens for `data`/`error`, so a closed stdin pipe (a disconnected
+  // or killed host process) would otherwise leave the server running with the database still open.
   const onStdinClosed = (reason: string) => (): void => {
     void shutdown(reason);
   };

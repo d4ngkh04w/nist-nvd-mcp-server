@@ -126,7 +126,7 @@ describe('SequentialRateLimiter', () => {
     releaseFirst();
     await tasks[0];
     await delay(60);
-    // Queued work is rejected, never silently dropped, so no caller is left waiting.
+    // Queued work is rejected, never silently dropped, so no promise is left pending.
     const settled = await settledPromise;
     expect(settled.map((outcome) => outcome.status)).toEqual(['fulfilled', 'rejected', 'rejected']);
 

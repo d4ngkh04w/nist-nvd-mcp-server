@@ -148,7 +148,7 @@ export class NvdHttpClient {
   ): Promise<AttemptOutcome> {
     this.logger.debug('nvd_request', { endpoint, attempt, paramKeys });
     try {
-      return await this.rateLimiter.schedule(async () => this.performRequest(url, endpoint));
+      return await this.rateLimiter.schedule(async () => this.performRequest(url, endpoint, paramKeys));
     } catch (error) {
       if (isDomainError(error)) {
         return { kind: error.retryable ? 'retry' : 'fail', error };
@@ -179,7 +179,7 @@ export class NvdHttpClient {
     }
   }
 
-  private async performRequest(url: string, endpoint: string): Promise<AttemptOutcome> {
+  private async performRequest(url: string, endpoint: string, paramKeys: string[]): Promise<AttemptOutcome> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
     if (typeof timeout.unref === 'function') {
@@ -202,7 +202,14 @@ export class NvdHttpClient {
       if (!response.ok) {
         const retryAfterSeconds = parseRetryAfter(response.headers.get('retry-after'), this.now());
         const snippet = await readBodySnippet(response);
-        const error = classifyStatus(response.status, endpoint, retryAfterSeconds, snippet);
+        const error = classifyStatus({
+          status: response.status,
+          endpoint,
+          retryAfterSeconds,
+          bodySnippet: snippet,
+          apiKeySent: this.apiKey !== undefined,
+          paramKeys,
+        });
         return { kind: error.retryable ? 'retry' : 'fail', error };
       }
 
@@ -232,12 +239,17 @@ export class NvdHttpClient {
   }
 }
 
-function classifyStatus(
-  status: number,
-  endpoint: string,
-  retryAfterSeconds: number | undefined,
-  bodySnippet: string,
-): DomainError {
+type StatusContext = {
+  status: number;
+  endpoint: string;
+  retryAfterSeconds: number | undefined;
+  bodySnippet: string;
+  apiKeySent: boolean;
+  paramKeys: string[];
+};
+
+function classifyStatus(context: StatusContext): DomainError {
+  const { status, endpoint, retryAfterSeconds, bodySnippet, apiKeySent, paramKeys } = context;
   if (status === 429) {
     return DomainError.rateLimited(retryAfterSeconds, 'NVD rate limit reached (HTTP 429)');
   }
@@ -251,10 +263,20 @@ function classifyStatus(
     return DomainError.upstreamUnavailable(`NVD is unavailable (HTTP ${status})`);
   }
   if (status === 404) {
-    return DomainError.upstreamBadResponse(
-      'NVD returned HTTP 404. The endpoint or one of the query parameters is not supported.',
-      { endpoint, status, bodySnippet },
-    );
+    // A rejected `apiKey` is answered with 404 on every endpoint, so the credential is the likelier
+    // cause than the query whenever one was sent. Echoing the parameter names that were actually
+    // sent turns the failure into something the caller can act on instead of guessing which filter
+    // was the rejected one.
+    const message =
+      'NVD returned HTTP 404. The endpoint or one of the query parameters is not supported.' +
+      (apiKeySent
+        ? ' An invalid or expired NVD_API_KEY also answers 404 on every endpoint, so check the key before changing the query.'
+        : '');
+    const details: Record<string, unknown> = { endpoint, status, bodySnippet };
+    if (paramKeys.length > 0) {
+      details['queryParameters'] = paramKeys;
+    }
+    return DomainError.upstreamBadResponse(message, details);
   }
   return DomainError.upstreamBadResponse(`NVD returned an unexpected status (HTTP ${status})`, {
     endpoint,

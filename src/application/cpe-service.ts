@@ -7,18 +7,21 @@ import type { CursorCodec, CursorPayload, PaginationMeta, PaginationResource } f
 import type { Clock, CpeRepositoryPort, NvdCpeClientPort, QueryCacheRepositoryPort } from '../domain/ports.js';
 import type { CachedPage, CpeQuery, DateWindow, NvdPageRequest } from '../domain/queries.js';
 import {
+  assertCpeComponentCount,
   isValidCpeMatchString,
   isValidUuid,
   normalizeUuid,
   resolvePageSize,
   validateDateWindow,
 } from '../domain/validation.js';
+import { CPE_RECORD_FIELDS, projectFieldList, resolveFields } from '../domain/field-projection.js';
 import { buildEntityIdentity, buildQueryIdentity } from '../infrastructure/cache/cache-key.js';
 import type { Logger } from '../shared/logger.js';
 import { addSeconds, toIso } from '../shared/time.js';
 import type { CachedResourceLoader } from './cached-resource-loader.js';
 import { applyCpeQueryFilters } from './client-side-filters.js';
 import type { ResponseMeta } from './response-meta.js';
+import { buildPaginationMeta, withFieldsApplied } from './response-meta.js';
 import { mergeWarnings, serializeRawPayload } from './support.js';
 
 export type SearchCpesInput = {
@@ -30,6 +33,9 @@ export type SearchCpesInput = {
   includeDeprecated?: boolean;
   pageSize?: number;
   cursor?: string;
+  fields?: string[];
+  /** Return the pagination block without serializing the items themselves. */
+  metaOnly?: boolean;
 };
 
 export type CpeCollectionOutput = {
@@ -64,6 +70,7 @@ export class CpeService {
   constructor(private readonly deps: CpeServiceDeps) {}
 
   async searchCpes(input: SearchCpesInput): Promise<CpeCollectionOutput> {
+    const fields = resolveFields(input.fields, CPE_RECORD_FIELDS, 'nvd_search_cpes');
     const query = this.buildSearchQuery(input);
     const pageSize = resolvePageSize(
       input.pageSize,
@@ -93,6 +100,7 @@ export class CpeService {
 
     const nextStartIndex = page.startIndex + page.upstreamCount;
     const hasMore = page.upstreamCount > 0 && nextStartIndex < page.totalResults;
+    const currentPage = cursor?.page ?? 1;
 
     const result: ResponseMeta = {
       ...meta,
@@ -110,10 +118,11 @@ export class CpeService {
     }
 
     return {
-      items: page.items,
-      pagination: {
+      items: input.metaOnly === true ? [] : projectFieldList(page.items, fields),
+      pagination: buildPaginationMeta({
+        page: currentPage,
         pageSize,
-        returned: page.items.length,
+        returned: input.metaOnly === true ? 0 : page.items.length,
         totalResults: page.totalResults,
         hasMore,
         nextCursor: hasMore
@@ -122,10 +131,11 @@ export class CpeService {
               queryHash: identity.queryHash,
               startIndex: nextStartIndex,
               pageSize,
+              page: currentPage + 1,
             })
           : null,
-      },
-      meta: result,
+      }),
+      meta: withFieldsApplied(result, fields),
     };
   }
 
@@ -184,14 +194,10 @@ export class CpeService {
     const identity = buildEntityIdentity('cpe', `name:${cpeName.toLowerCase()}`);
     const pageSize = this.deps.config.limits.pageSize.cpes.max;
     const scan = { pages: 0, scanned: 0, totalResults: 0 };
-    const warnings: string[] = [
-      `cpeName lookups use an upstream pattern search; the server scans up to ${MAX_CPE_NAME_SCAN_PAGES} pages for the exact name`,
-    ];
     const result = await this.deps.loader.load<CpeRecord>({
       resource: 'cpe',
       cacheKey: identity.cacheKey,
       ttlSeconds: this.deps.config.ttlSeconds.cpeDetail,
-      warnings,
       readCached: () => this.deps.cpeRepository.findByName(cpeName),
       writeCached: (record) => {
         this.deps.cpeRepository.upsertMany([record.value], {
@@ -254,7 +260,19 @@ export class CpeService {
           { cpeName, scanned: scan.scanned, totalResults: scan.totalResults },
         ),
     });
-    return { data: result.value, meta: { ...result.meta, warnings: mergeWarnings(result.meta.warnings) } };
+
+    // The scan note belongs to the path that scans. A fresh cache hit never calls the upstream
+    // pattern search, so repeating the mechanics there reads as a problem with the returned record.
+    const scanWarnings =
+      result.meta.source === 'nvd'
+        ? [
+            `cpeName lookups use an upstream pattern search; the server scans up to ${MAX_CPE_NAME_SCAN_PAGES} pages for the exact name`,
+          ]
+        : [];
+    return {
+      data: result.value,
+      meta: { ...result.meta, warnings: mergeWarnings(scanWarnings, result.meta.warnings) },
+    };
   }
 
   private buildSearchQuery(input: SearchCpesInput): CpeQuery {
@@ -266,11 +284,16 @@ export class CpeService {
         matchCriteriaId: input.matchCriteriaId,
       });
     }
-    if (input.cpeMatchString !== undefined && !isValidCpeMatchString(input.cpeMatchString)) {
-      throw DomainError.invalidInput(
-        'cpeMatchString must be a CPE 2.3 formatted string or a CPE 2.2 URI',
-        { cpeMatchString: input.cpeMatchString },
-      );
+    if (input.cpeMatchString !== undefined) {
+      if (!isValidCpeMatchString(input.cpeMatchString)) {
+        throw DomainError.invalidInput(
+          'cpeMatchString must be a CPE 2.3 formatted string or a CPE 2.2 URI',
+          { cpeMatchString: input.cpeMatchString },
+        );
+      }
+      // `/cpes/2.0` accepts a short pattern (`cpe:2.3:a:apache:log4j:*`) but answers HTTP 404 for
+      // more than the 13 components of a full CPE 2.3 string.
+      assertCpeComponentCount(input.cpeMatchString, 'cpeMatchString');
     }
 
     const query: CpeQuery = {};
@@ -347,8 +370,8 @@ export class CpeService {
    * Fetches one public page.
    *
    * The CPE dictionary applies its `includeDeprecated` policy locally (the upstream parameter is
-   * rejected with HTTP 404), so a single upstream page can contain fewer usable rows than the
-   * caller asked for. To keep pagination semantics intact the loader keeps requesting only the
+   * rejected with HTTP 404), so a single upstream page can contain fewer usable rows than
+   * `pageSize`. To keep pagination semantics intact the loader keeps requesting only the
    * still-missing number of rows (never more), which guarantees that `items.length <= pageSize`
    * and that `startIndex + upstreamCount` is exactly the offset of the next page - no gaps, no
    * duplicates, and `totalResults` keeps its upstream meaning.
@@ -444,6 +467,7 @@ export class CpeService {
     if (payload.queryHash !== queryHash) {
       throw DomainError.invalidCursor(
         'Cursor does not match the supplied filters; restart pagination without a cursor',
+        { reason: 'filter_mismatch' },
       );
     }
     if (payload.pageSize > maxPageSize) {

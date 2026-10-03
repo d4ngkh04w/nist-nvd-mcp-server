@@ -225,7 +225,7 @@ export class CachedResourceLoader {
   /**
    * Resolves the raw upstream payload persisted next to the cached entity.
    *
-   * `undefined` means the caller must fall back to the disk cache; a missing row, a read failure
+   * `undefined` signals that the disk cache must be consulted instead; a missing row, a read failure
    * and a corrupt payload all produce that signal so a `needsRaw` lookup never fails on its own.
    */
   private readRawFromStore<T>(options: LoadOptions<T>): unknown {

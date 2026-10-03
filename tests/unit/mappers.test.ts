@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildCveSummary, projectCveDetails } from '../../src/application/mapping/cve-summary.js';
+import {
+  buildCveSummary,
+  keepsField,
+  projectCveDetails,
+} from '../../src/application/mapping/cve-summary.js';
+import type { CveSummaryProjection } from '../../src/application/mapping/cve-summary.js';
+
+/** The unprojected summary: every field present, including the capped product list. */
+const FULL_SUMMARY: CveSummaryProjection = { includeAffectedProducts: true };
 import { MAX_SUMMARY_AFFECTED_PRODUCTS, MAX_SUMMARY_DESCRIPTION_CHARS } from '../../src/config/defaults.js';
 import type { CveCpeMatch, CveConfiguration, CveDetails } from '../../src/domain/cve.js';
 import { DomainError } from '../../src/domain/errors.js';
@@ -306,7 +314,7 @@ describe('primary CVSS selection', () => {
 describe('buildCveSummary', () => {
   it('truncates descriptions that exceed the summary budget', () => {
     const description = 'x'.repeat(MAX_SUMMARY_DESCRIPTION_CHARS + 500);
-    const { summary, warnings } = buildCveSummary(mapFirstCve({ description }));
+    const { summary, warnings } = buildCveSummary(mapFirstCve({ description }), FULL_SUMMARY);
 
     const summaryText = summary.summary;
     expect(summaryText).not.toBeNull();
@@ -337,7 +345,7 @@ describe('buildCveSummary', () => {
       },
     ];
 
-    const { summary, warnings } = buildCveSummary(mapCveItem(nvdCveItemSchema.parse(raw)));
+    const { summary, warnings } = buildCveSummary(mapCveItem(nvdCveItemSchema.parse(raw)), FULL_SUMMARY);
 
     expect(summary.affectedProducts).toHaveLength(MAX_SUMMARY_AFFECTED_PRODUCTS);
     expect(warnings).toHaveLength(1);
@@ -362,7 +370,7 @@ describe('buildCveSummary', () => {
       },
     ];
 
-    const { summary } = buildCveSummary(mapCveItem(nvdCveItemSchema.parse(raw)));
+    const { summary } = buildCveSummary(mapCveItem(nvdCveItemSchema.parse(raw)), FULL_SUMMARY);
 
     expect(summary.affectedProducts).toEqual([
       { criteria: 'cpe:2.3:a:vendor:product:1.0:*:*:*:*:*:*:*', vulnerable: true },
@@ -371,17 +379,17 @@ describe('buildCveSummary', () => {
   });
 
   it('sets kevDateAdded only for KEV records', () => {
-    const kevSummary = buildCveSummary(mapFirstCve({ kev: true })).summary;
+    const kevSummary = buildCveSummary(mapFirstCve({ kev: true }), FULL_SUMMARY).summary;
     expect(kevSummary.isKnownExploited).toBe(true);
     expect(kevSummary.kevDateAdded).toBe('2024-04-01');
 
-    const plainSummary = buildCveSummary(mapFirstCve()).summary;
+    const plainSummary = buildCveSummary(mapFirstCve(), FULL_SUMMARY).summary;
     expect(plainSummary.isKnownExploited).toBe(false);
     expect(plainSummary).not.toHaveProperty('kevDateAdded');
   });
 
   it('projects the primary CVSS values and counts the references', () => {
-    const { summary } = buildCveSummary(mapFirstCve({ referenceCount: 5 }));
+    const { summary } = buildCveSummary(mapFirstCve({ referenceCount: 5 }), FULL_SUMMARY);
 
     expect(summary.primaryCvss).toEqual({
       version: '3.1',
@@ -390,6 +398,48 @@ describe('buildCveSummary', () => {
       vector: 'CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H',
     });
     expect(summary.referenceCount).toBe(5);
+  });
+
+  it('keeps the affectedProducts cap warning while the field is part of the summary', () => {
+    const { summary, warnings } = buildCveSummary(
+      mapFirstCve({ affectedProductCount: 60 }),
+      FULL_SUMMARY,
+    );
+
+    expect(summary.affectedProducts).toHaveLength(MAX_SUMMARY_AFFECTED_PRODUCTS);
+    expect(warnings.some((w) => w.includes('affectedProducts was truncated'))).toBe(true);
+  });
+
+  it('drops the affectedProducts cap warning when the projection removes the field', () => {
+    const dropped = buildCveSummary(mapFirstCve({ affectedProductCount: 60 }), {
+      includeAffectedProducts: false,
+    });
+
+    expect(dropped.summary.affectedProducts).toEqual([]);
+    expect(dropped.warnings.some((w) => w.includes('affectedProducts'))).toBe(false);
+  });
+
+  it('keeps other sections intact when only affectedProducts is dropped', () => {
+    const dropped = buildCveSummary(
+      mapFirstCve({ affectedProductCount: 60, kev: true }),
+      { includeAffectedProducts: false },
+    );
+
+    expect(dropped.summary.id).toBe('CVE-2024-3094');
+    expect(dropped.summary.kevDateAdded).toBe('2024-04-01');
+    expect(dropped.summary.primaryCvss?.score).toBe(8.1);
+    expect(dropped.warnings).toEqual([]);
+  });
+});
+
+describe('keepsField', () => {
+  it('treats an omitted projection as keeping every field', () => {
+    expect(keepsField(undefined, 'affectedProducts')).toBe(true);
+  });
+
+  it('keeps a field the projection still lists and drops one it omits', () => {
+    expect(keepsField(['id', 'affectedProducts'], 'affectedProducts')).toBe(true);
+    expect(keepsField(['id', 'summary'], 'affectedProducts')).toBe(false);
   });
 });
 
@@ -492,8 +542,8 @@ describe('mapCveChange', () => {
   });
 
   it('accepts an SSVC detail whose newValue is a JSON object and flattens it to text', () => {
-    // Regression: the live /cvehistory/2.0 returns `newValue` as an object for structured payloads,
-    // which used to fail response validation with UPSTREAM_BAD_RESPONSE and break page 2.
+    // `/cvehistory/2.0` returns `newValue` as an object for structured payloads, so both the schema
+    // and the mapper have to tolerate a non-string value.
     const item = nvdCveHistoryItemSchema.parse(
       cveChange({ cveId: 'CVE-2021-44228', details: [SSVC_CHANGE_DETAIL] }),
     );

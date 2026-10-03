@@ -147,6 +147,37 @@ describe('validateDateWindow', () => {
     expect(error.details).toMatchObject({ field: 'published', maxDays: 120, requestedDays: 121 });
   });
 
+  it('widens a date-only end to the last millisecond of that day', () => {
+    // NVD timestamps carry a clock time, so resolving `2024-01-31` to midnight would drop every
+    // record published during the day and empty a single-day range.
+    expect(
+      validateDateWindow({ start: '2024-01-01', end: '2024-01-31' }, WINDOW_OPTIONS),
+    ).toMatchObject({ startIso: '2024-01-01T00:00:00.000Z', endIso: '2024-01-31T23:59:59.999Z' });
+
+    expect(
+      validateDateWindow({ start: '2024-01-31', end: '2024-01-31' }, WINDOW_OPTIONS).endIso,
+    ).toBe('2024-01-31T23:59:59.999Z');
+  });
+
+  it('leaves an explicit timestamp end untouched', () => {
+    expect(
+      validateDateWindow(
+        { start: '2024-01-01T00:00:00Z', end: '2024-01-31T12:30:00Z' },
+        WINDOW_OPTIONS,
+      ).endIso,
+    ).toBe('2024-01-31T12:30:00.000Z');
+  });
+
+  it('does not let the end-of-day widening push an accepted window past the limit', () => {
+    const result = validateDateWindow(
+      { start: '2024-01-01', end: '2024-04-30' },
+      WINDOW_OPTIONS,
+    );
+
+    expect(result.days).toBe(120);
+    expect(result.endIso).toBe('2024-04-30T23:59:59.999Z');
+  });
+
   it('rejects an inverted window with INVALID_INPUT', () => {
     const error = captureDomainError(() =>
       validateDateWindow(

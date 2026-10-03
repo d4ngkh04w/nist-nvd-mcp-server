@@ -1,4 +1,4 @@
-import { CURSOR_VERSION, type PaginationResourceName } from '../config/defaults.js';
+import type { PaginationResourceName } from '../config/defaults.js';
 
 /** Resources that support NVD offset pagination. */
 export type PaginationResource = PaginationResourceName;
@@ -10,6 +10,13 @@ export type CursorPayload = {
   queryHash: string;
   startIndex: number;
   pageSize: number;
+  /**
+   * 1-based ordinal of this page within the cursor walk.
+   *
+   * Derived from the offset alone it would be wrong for the descending feeds, whose first page is
+   * read from the end of the window, so the ordinal travels with the signed cursor instead.
+   */
+  page?: number;
   issuedAt: string;
   expiresAt: string;
   /**
@@ -24,14 +31,37 @@ export type CursorPayload = {
   };
 };
 
-export const CURRENT_CURSOR_VERSION = CURSOR_VERSION;
+/**
+ * Machine-readable cause carried in `INVALID_CURSOR` `details.reason`.
+ *
+ * A single error code covers every rejection, so the reason is what lets a caller tell a token it
+ * mangled in transit apart from one that expired or was issued for a different query.
+ */
+export type CursorErrorReason =
+  | 'empty'
+  | 'too_long'
+  | 'format'
+  | 'signature'
+  | 'payload'
+  | 'version'
+  | 'resource'
+  | 'query_hash'
+  | 'start_index'
+  | 'page_size'
+  | 'timestamps'
+  | 'expired'
+  | 'window'
+  | 'filter_mismatch'
+  | 'out_of_range';
 
-/** Caller-supplied cursor data; the codec adds `version`, `issuedAt` and `expiresAt`. */
+/** Cursor data before signing; the codec adds `version`, `issuedAt` and `expiresAt`. */
 export type CursorInput = {
   resource: PaginationResource;
   queryHash: string;
   startIndex: number;
   pageSize: number;
+  /** 1-based ordinal of the page this cursor points at. */
+  page?: number;
   resolvedWindow?: {
     start: string;
     end: string;
@@ -45,13 +75,15 @@ export type CursorCodec = {
   decode(token: string): CursorPayload;
 };
 
-export type PageRequest = {
-  startIndex: number;
-  pageSize: number;
-};
-
 /** Public pagination block attached to list responses. Never exposes `startIndex`. */
 export type PaginationMeta = {
+  /** 1-based ordinal of this page within the cursor walk; 1 on the first page. */
+  page: number;
+  /**
+   * Pages the current upstream total divides into. The upstream set is live, so it can change
+   * between two calls of the same walk and this is an estimate rather than a fixed plan.
+   */
+  pageCount: number;
   pageSize: number;
   returned: number;
   totalResults: number;

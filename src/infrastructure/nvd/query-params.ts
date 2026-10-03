@@ -22,7 +22,7 @@ import type { NvdQueryParams } from './http-client.js';
  * - `isVulnerable` is only accepted together with `cpeName` (HTTP 404 otherwise); the application
  *   layer enforces that pairing.
  * - the CPE `includeDeprecated` parameter is rejected by the live API (HTTP 404), so that policy is
- *   the only one still applied client-side.
+ *   the only policy still applied locally.
  */
 
 export function cvssParamKeys(version: CvssVersion): {

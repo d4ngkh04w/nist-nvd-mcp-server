@@ -125,7 +125,7 @@ describe('MCP contract: tools/call for all ten tools', () => {
         assert: (payload) => {
           expect(readItems(payload)).toHaveLength(1);
           expect(readMeta(payload)['ordering']).toBe('last_modified_desc');
-          // vulnStatuses is forwarded to NVD, so nothing is filtered client-side.
+          // vulnStatuses reaches NVD, so no local filter ran.
           expect(readMeta(payload)['filtersAppliedClientSide']).toBeUndefined();
           expect(readPagination(payload)['totalResults']).toBe(1);
         },

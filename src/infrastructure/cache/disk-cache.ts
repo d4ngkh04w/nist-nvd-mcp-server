@@ -52,7 +52,7 @@ type CacheFile = {
 /**
  * File-based cache with an atomic write path.
  *
- * Every file name is derived from a validated 64-hex digest, so callers can never inject a path.
+ * Every file name is derived from a validated 64-hex digest, so no input can inject a path.
  * Cache payloads are treated as opaque: they are never logged and corruption never throws.
  */
 export class DiskCache {
@@ -128,7 +128,7 @@ export class DiskCache {
       await this.removeFile(filePath);
       return null;
     }
-    // The envelope shape was validated above; the payload type is provided by the caller.
+    // The envelope shape was validated above; the payload type is fixed at this call site.
     return parsed.value as DiskCacheEnvelope<T>;
   }
 
@@ -372,7 +372,7 @@ export class DiskCache {
 /**
  * Accepts either the bare 64-hex digest or the `sha256:<64 hex>` cache key produced by
  * `buildQueryIdentity`. Only these two shapes can reach the filesystem; everything else is
- * rejected so a caller can never inject a path segment.
+ * rejected so no input can inject a path segment.
  */
 function toDiskKey(key: string): string | null {
   if (DISK_KEY_PATTERN.test(key)) {

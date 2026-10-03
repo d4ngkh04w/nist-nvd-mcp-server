@@ -8,7 +8,7 @@ import { buildErrorResult } from './output.js';
  * Converts any thrown value into a tool error result.
  *
  * Domain errors keep their contract; unexpected errors are reported as `INTERNAL_ERROR` with a
- * generic message (the cause is logged to stderr, never returned to the client).
+ * generic message (the cause is logged to stderr and never leaves the process).
  */
 export function toErrorResult(error: unknown, tool: string, logger: Logger): CallToolResult {
   const domainError = toDomainError(error);

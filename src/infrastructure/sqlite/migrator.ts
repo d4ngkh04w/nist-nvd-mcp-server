@@ -34,8 +34,8 @@ const INSERT_MIGRATION_SQL =
  *
  * Each migration runs in a single transaction together with its registry row, so a
  * partially applied migration can never be observed. Checksums of already-applied files
- * are verified, but drift is only reported: the database keeps working while an operator
- * investigates the modified file.
+ * are verified, but drift is only reported: the database keeps working while the modified file is
+ * investigated.
  */
 export async function runMigrations(
   db: SqliteDatabase,

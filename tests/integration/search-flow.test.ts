@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { cveItem, cveResponse } from '../helpers/fixtures.js';
+import { cpeItem, cpeMatchItem, cpeMatchResponse, cpeResponse, cveItem, cveResponse } from '../helpers/fixtures.js';
 import { createHarness, readItems, readMeta, readPagination, type Harness } from '../helpers/harness.js';
 import type { NvdMockRequest } from '../helpers/nvd-mock-server.js';
 
@@ -178,7 +178,7 @@ describe('nvd_search_cves and the recent/modified feeds (integration)', () => {
     expect(statusRequest?.params['vulnStatuses']).toBe('Analyzed,UndergoingAnalysis');
 
     const statusMeta = readMeta(statusFiltered.structuredContent);
-    // Nothing is filtered locally any more.
+    // The page is served straight from the upstream result set: no local filter ran.
     expect(statusMeta['filtersAppliedClientSide']).toBeUndefined();
     expect(statusMeta['filteredOut']).toBeUndefined();
     // Returned items and total come straight from the upstream (filtered) result set.
@@ -202,12 +202,144 @@ describe('nvd_search_cves and the recent/modified feeds (integration)', () => {
     });
     expect(kevWindow.isError).toBe(false);
     const kevRequest = harness.nvd.requestsFor('/cves/2.0')[2];
+    // A date-only `end` is expanded to the end of that day: the NVD KEV timestamps are stored at
+    // midnight, so resolving it to 00:00:00 truncates the last day of the window.
     expect(kevRequest?.params).toMatchObject({
       kevStartDate: '2024-04-01T00:00:00.000',
-      kevEndDate: '2024-04-30T00:00:00.000',
+      kevEndDate: '2024-04-30T23:59:59.999',
     });
     expect(kevRequest?.params['hasKev']).toBeUndefined();
     expect(readMeta(kevWindow.structuredContent)['filtersAppliedClientSide']).toBeUndefined();
+  });
+
+  it('resolves a single-day KEV query through kev.addedOn and the date-only addedBetween end', async () => {
+    harness = await createHarness();
+    harness.nvd.on('/cves/2.0', { status: 200, body: cveResponse([cveItem()], { totalResults: 1 }) });
+
+    // `start == end` resolves to 00:00:00, which would cover no instant of that day at all.
+    const sameDayRange = await harness.callTool('nvd_search_cves', {
+      keyword: 'Remote Desktop Services',
+      kev: { addedBetween: { start: '2021-11-03', end: '2021-11-03' } },
+    });
+    expect(sameDayRange.isError).toBe(false);
+    expect(harness.nvd.requestsFor('/cves/2.0')[0]?.params).toMatchObject({
+      kevStartDate: '2021-11-03T00:00:00.000',
+      kevEndDate: '2021-11-03T23:59:59.999',
+    });
+
+    const exactDay = await harness.callTool('nvd_search_cves', {
+      keyword: 'Remote Desktop Services exact day',
+      kev: { addedOn: '2021-11-03' },
+    });
+    expect(exactDay.isError).toBe(false);
+    expect(harness.nvd.requestsFor('/cves/2.0')[1]?.params).toMatchObject({
+      kevStartDate: '2021-11-03T00:00:00.000',
+      kevEndDate: '2021-11-03T23:59:59.999',
+    });
+
+    // A timestamp bound stays verbatim: only a date-only end is widened.
+    const explicitBound = await harness.callTool('nvd_search_cves', {
+      keyword: 'Remote Desktop Services explicit bound',
+      kev: { addedBetween: { start: '2021-11-03T00:00:00Z', end: '2021-11-04T00:00:00Z' } },
+    });
+    expect(explicitBound.isError).toBe(false);
+    expect(harness.nvd.requestsFor('/cves/2.0')[2]?.params).toMatchObject({
+      kevStartDate: '2021-11-03T00:00:00.000',
+      kevEndDate: '2021-11-04T00:00:00.000',
+    });
+
+    const conflicting = await harness.callTool('nvd_search_cves', {
+      keyword: 'Remote Desktop Services conflicting',
+      kev: { addedOn: '2021-11-03', addedBetween: { start: '2021-11-01', end: '2021-11-05' } },
+    });
+    expect(conflicting.isError).toBe(true);
+    expect(conflicting.error?.['code']).toBe('INVALID_INPUT');
+    expect(String(conflicting.error?.['message'])).toContain('addedOn');
+  });
+
+  it('warns that a long keyword matched nothing instead of leaving an empty page unexplained', async () => {
+    harness = await createHarness();
+    harness.nvd.on('/cves/2.0', { status: 200, body: cveResponse([], { totalResults: 0 }) });
+
+    const longPhrase = await harness.callTool('nvd_search_cves', {
+      keyword: 'Log4j2 JNDI lookup remote code execution',
+    });
+    expect(longPhrase.isError).toBe(false);
+    expect(readItems(longPhrase.structuredContent)).toHaveLength(0);
+    const warnings = readMeta(longPhrase.structuredContent)['warnings'] as string[];
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('6-token phrase');
+    expect(warnings[0]).toContain('retry with fewer distinctive terms');
+    // The hint is presentational: the upstream query is unchanged.
+    expect(harness.nvd.requestsFor('/cves/2.0')[0]?.params).toMatchObject({
+      keywordSearch: 'Log4j2 JNDI lookup remote code execution',
+    });
+
+    // Three tokens is an ordinary miss, not a suspicious query.
+    const shortPhrase = await harness.callTool('nvd_search_cves', {
+      keyword: 'Log4j2 JNDI lookup',
+    });
+    expect(readMeta(shortPhrase.structuredContent)['warnings']).toEqual([]);
+
+    // A phrase that matches keeps the page clean. A distinct keyword is used because the identical
+    // query is already cached from the empty response above.
+    harness.nvd.on('/cves/2.0', { status: 200, body: cveResponse([cveItem()], { totalResults: 1 }) });
+    const hit = await harness.callTool('nvd_search_cves', {
+      keyword: 'Log4Shell JNDI lookup remote code execution in Java',
+    });
+    expect(readItems(hit.structuredContent)).toHaveLength(1);
+    expect(readMeta(hit.structuredContent)['warnings']).toEqual([]);
+
+    // keywordExactMatch asks for the phrase verbatim, so a miss needs no tokenization hint.
+    harness.nvd.on('/cves/2.0', { status: 200, body: cveResponse([], { totalResults: 0 }) });
+    const exact = await harness.callTool('nvd_search_cves', {
+      keyword: 'Log4j2 JNDI lookup remote code execution',
+      keywordExactMatch: true,
+    });
+    expect(readMeta(exact.structuredContent)['warnings']).toEqual([]);
+  });
+
+  it('rejects a malformed kev.addedOn and a CPE match string with too many components', async () => {
+    harness = await createHarness();
+    harness.nvd.on('/cpematch/2.0', {
+      status: 200,
+      body: cpeMatchResponse([cpeMatchItem()], { totalResults: 1 }),
+    });
+    harness.nvd.on('/cpes/2.0', { status: 200, body: cpeResponse([cpeItem()], { totalResults: 1 }) });
+
+    const badDay = await harness.callTool('nvd_search_cves', {
+      keyword: 'vendor',
+      kev: { addedOn: '2021-11-03T00:00:00Z' },
+    });
+    expect(badDay.isError).toBe(true);
+    // Schema violations are reported by the SDK as a plain-text result, not a ToolError payload.
+    expect(badDay.text).toContain('kev.addedOn');
+
+    // A CPE name with one trailing `*` too many made /cpematch/2.0 answer HTTP 404; it is now an
+    // INVALID_INPUT that names the component limit.
+    const tooManyComponents = await harness.callTool('nvd_search_cpe_matches', {
+      matchStringSearch: 'cpe:2.3:a:apache:log4j:2.0:rc1:*:*:*:*:*:*:*',
+    });
+    expect(tooManyComponents.isError).toBe(true);
+    expect(tooManyComponents.error?.['code']).toBe('INVALID_INPUT');
+    expect(String(tooManyComponents.error?.['message'])).toContain('13');
+
+    // The correct 13-component criteria string still reaches the upstream request.
+    const valid = await harness.callTool('nvd_search_cpe_matches', {
+      matchStringSearch: 'cpe:2.3:a:apache:log4j:2.0:rc1:*:*:*:*:*:*',
+    });
+    expect(valid.isError).toBe(false);
+    expect(harness.nvd.requestsFor('/cpematch/2.0')[0]?.params['matchStringSearch']).toBe(
+      'cpe:2.3:a:apache:log4j:2.0:rc1:*:*:*:*:*:*',
+    );
+
+    const shortDictionaryPattern = await harness.callTool('nvd_search_cpes', {
+      cpeMatchString: 'cpe:2.3:a:apache:log4j:*',
+    });
+    expect(shortDictionaryPattern.isError).toBe(false);
+    expect(harness.nvd.requestsFor('/cpes/2.0')[0]?.params['cpeMatchString']).toBe(
+      'cpe:2.3:a:apache:log4j:*',
+    );
   });
 
   it('nvd_get_recent_cves uses a 7-day window by default and returns the newest CVEs first', async () => {
@@ -357,7 +489,7 @@ describe('nvd_search_cves and the recent/modified feeds (integration)', () => {
       | undefined;
     expect(firstWindow).toBeDefined();
 
-    // Several minutes pass before the caller asks for the next page.
+    // Several minutes pass before the next page is requested.
     harness.clock.advanceMs(5 * 60_000);
 
     const page2 = await harness.callTool('nvd_get_recent_cves', {
@@ -378,7 +510,7 @@ describe('nvd_search_cves and the recent/modified feeds (integration)', () => {
       firstWindow?.start.replace(/Z$/, '').replace(/\.\d{3}Z?$/, '.000'),
     );
     expect(page2Request?.params['pubEndDate']).toBe(
-      page2Request?.params['pubEndDate'],
+      firstWindow?.end.replace(/Z$/, '').replace(/\.\d{3}Z?$/, '.000'),
     );
     expect(page2Request?.params['startIndex']).toBe('10');
 
@@ -391,5 +523,63 @@ describe('nvd_search_cves and the recent/modified feeds (integration)', () => {
     });
     expect(mismatched.isError).toBe(true);
     expect(mismatched.error?.['code']).toBe('INVALID_CURSOR');
+  });
+
+  it('resolves a date-only published end to the last millisecond of that day', async () => {
+    harness = await createHarness();
+    harness.nvd.on('/cves/2.0', { status: 200, body: cveResponse([cveItem()], { totalResults: 1 }) });
+
+    // Midnight would cover no instant of 31 January and hide every record published that day.
+    const result = await harness.callTool('nvd_search_cves', {
+      keyword: 'log4j',
+      published: { start: '2024-01-01', end: '2024-01-31' },
+    });
+
+    expect(result.isError).toBe(false);
+    expect(harness.nvd.requestsFor('/cves/2.0')[0]?.params['pubEndDate']).toBe(
+      '2024-01-31T23:59:59.999',
+    );
+    expect(readMeta(result.structuredContent)['window']).toEqual({
+      start: '2024-01-01T00:00:00.000Z',
+      end: '2024-01-31T23:59:59.999Z',
+    });
+  });
+
+  it('reports a cursor rejection reason so a mangled token is distinguishable from a stale query', async () => {
+    harness = await createHarness();
+    harness.nvd.on('/cves/2.0', paginatingResponder(ascendingDataset(40)));
+
+    const page1 = await harness.callTool('nvd_search_cves', { keyword: 'log4j', pageSize: 10 });
+    const cursor = readPagination(page1.structuredContent)['nextCursor'] as string;
+    expect(cursor.length).toBeGreaterThan(0);
+
+    // A byte-exact echo is always accepted.
+    const page2 = await harness.callTool('nvd_search_cves', {
+      keyword: 'log4j',
+      pageSize: 10,
+      cursor,
+    });
+    expect(page2.isError).toBe(false);
+
+    // A dropped character while copying is reported as an altered token, not as a query change.
+    const truncated = await harness.callTool('nvd_search_cves', {
+      keyword: 'log4j',
+      pageSize: 10,
+      cursor: cursor.slice(0, -1),
+    });
+    expect(truncated.isError).toBe(true);
+    expect(truncated.error?.['code']).toBe('INVALID_CURSOR');
+    expect((truncated.error?.['details'] as Record<string, unknown>)['reason']).toBe('signature');
+
+    // Replaying the same token under a different pageSize is a query mismatch.
+    const changedPageSize = await harness.callTool('nvd_search_cves', {
+      keyword: 'log4j',
+      pageSize: 20,
+      cursor,
+    });
+    expect(changedPageSize.isError).toBe(true);
+    expect((changedPageSize.error?.['details'] as Record<string, unknown>)['reason']).toBe(
+      'filter_mismatch',
+    );
   });
 });

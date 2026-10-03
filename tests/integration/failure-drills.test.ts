@@ -177,7 +177,8 @@ describe('failure drills: shutdown, locking, upstream errors and corruption', ()
     expect(countRows(harness.config.storage.sqlitePath, 'cves')).toBe(ids.length);
     expect(integrity(harness.config.storage.sqlitePath)).toBe('ok');
     expect(harness.logs.some((line) => line.includes('cache_write_retry'))).toBe(true);
-    // A synchronous busy handler used to block the loop for the whole timeout (5 s by default).
+    // The busy handler is synchronous, so a long timeout would stall the event loop for its whole
+    // duration; a contended write must instead be retried with an `await`ed back-off.
     expect(maxGapMs).toBeLessThan(500);
     expect(ticks).toBeGreaterThanOrEqual(1);
     expect(Date.now() - startedAt).toBeLessThan(5_000);

@@ -103,8 +103,8 @@ describe('CVE history, CPE dictionary and CPE match criteria (integration)', () 
   });
 
   it('nvd_get_cve_history serves a later page that carries a structured SSVC detail', async () => {
-    // Regression: the live API returns `details[].newValue` as a JSON object for SSVC decisions.
-    // Response validation used to reject it, so the whole page failed with UPSTREAM_BAD_RESPONSE.
+    // `/cvehistory/2.0` returns `details[].newValue` as a JSON object for SSVC decisions, so the
+    // schema must accept any JSON value here; a string-only schema rejects the entire page.
     harness = await createHarness();
     const dataset = [
       cveChange({ cveChangeId: 'A1CEBCCC-B199-4F56-A1B2-95F6725AFDF9' }),
@@ -283,6 +283,17 @@ describe('CVE history, CPE dictionary and CPE match criteria (integration)', () 
     );
     const meta = readMeta(exact.structuredContent);
     expect((meta['warnings'] as string[]).join(' ')).toContain('pattern search');
+
+    // The scan note describes the pattern search that produced the value, so a fresh cache hit -
+    // which never scans - does not repeat it.
+    const cached = await harness.callTool('nvd_get_cpe', {
+      cpeName: 'cpe:2.3:a:tukaani:xz:5.6.1:*:*:*:*:*:*:*',
+    });
+    expect(cached.isError).toBe(false);
+    const cachedMeta = readMeta(cached.structuredContent);
+    expect(cachedMeta['cacheStatus']).toBe('hit');
+    expect(cachedMeta['source']).toBe('cache');
+    expect(cachedMeta['warnings']).toEqual([]);
 
     const notInPage = await harness.callTool('nvd_get_cpe', {
       cpeName: 'cpe:2.3:a:tukaani:xz:9.9.9:*:*:*:*:*:*:*',

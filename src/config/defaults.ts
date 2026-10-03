@@ -11,10 +11,6 @@ export const NVD_DEFAULT_BASE_URL = 'https://services.nvd.nist.gov/rest/json';
 /** NVD rejects date windows longer than 120 days. */
 export const MAX_DATE_RANGE_DAYS = 120;
 
-/** Upstream NVD page size bounds (resultsPerPage). */
-export const NVD_MIN_RESULTS_PER_PAGE = 1;
-export const NVD_MAX_RESULTS_PER_PAGE = 2000;
-
 /** NVD caps comma separated `cveId` filters at 100 identifiers. */
 export const MAX_CVE_IDS_PER_REQUEST = 100;
 
@@ -51,12 +47,6 @@ export const DEFAULT_NVD_MAX_RETRIES = 4;
 export const DEFAULT_RETRY_BASE_DELAY_MS = 1_000;
 export const MAX_RETRY_DELAY_MS = 30_000;
 
-/** HTTP status codes that are worth retrying. */
-export const RETRYABLE_STATUS_CODES: readonly number[] = [429, 500, 502, 503, 504];
-
-/** HTTP status codes that must never be retried. */
-export const NON_RETRYABLE_STATUS_CODES: readonly number[] = [400, 401, 403, 404, 422];
-
 /** Default cursor TTL. */
 export const DEFAULT_CURSOR_TTL_SECONDS = 1_800;
 export const CURSOR_VERSION = 1;
@@ -85,6 +75,14 @@ export const MAX_LOCAL_FILTER_FILL_REQUESTS = 4;
 
 /** Upstream pages `nvd_get_cpe` scans when resolving an exact `cpeName` by pattern search. */
 export const MAX_CPE_NAME_SCAN_PAGES = 3;
+
+/**
+ * Token count from which an empty `nvd_search_cves` result is annotated with a hint.
+ *
+ * NVD tokenizes `keyword` and requires every token in the description text, so a long phrase is
+ * strictly narrower than a short one. Below this count an empty page is an ordinary "no match".
+ */
+export const KEYWORD_ZERO_RESULT_HINT_MIN_TOKENS = 4;
 
 /**
  * SQLite defaults.
