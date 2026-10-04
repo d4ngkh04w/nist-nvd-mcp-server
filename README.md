@@ -43,6 +43,81 @@ The server speaks JSON-RPC on **stdin/stdout**; every log line goes to stderr.
 | `nvd_search_cpe_matches` | Search CPE Match Criteria |
 
 Every tool accepts `fields` to narrow payloads; every list tool accepts `metaOnly: true` and `pageSize`/`cursor` for pagination.
+Unknown input fields are rejected with `INVALID_INPUT` (typo guard), so copy parameter names verbatim.
+
+## Examples
+
+These are `tools/call` arguments (MCP JSON-RPC). All of them are read-only.
+
+**1. Compact summary of one CVE** (`nvd_get_cve_summary`):
+
+```json
+{ "cveId": "CVE-2021-44228" }
+```
+
+Returns `data` with `id`, `summary`, `primaryCvss`, `cwes`, `affectedProducts`,
+`isKnownExploited` and `kevDateAdded` — without the full configuration tree.
+
+**2. Compare CVSS scores of several CVEs in one call** (`nvd_get_cves`):
+
+```json
+{
+  "cveIds": ["CVE-2014-0160", "CVE-2016-5195", "CVE-2021-44228"],
+  "fields": ["id", "primaryCvss", "isKnownExploited"]
+}
+```
+
+Identifiers are uppercased and de-duplicated; the response reports `foundIds`,
+`missingIds` and `meta.requested/found/missing`. Use `nvd_get_cve` when you need
+the full record instead of a summary.
+
+**3. Narrow one KEV batch to a single product** (`nvd_search_cves`):
+
+```json
+{
+  "kev": { "addedOn": "2021-11-03" },
+  "keyword": "Remote Desktop Services",
+  "fields": ["id", "published", "summary", "primaryCvss", "isKnownExploited", "kevDateAdded"]
+}
+```
+
+`addedOn` is an exact `YYYY-MM-DD` day (sent as that day 00:00:00–23:59:59, so the
+batch is never truncated). Filters combine with AND. A keyword with more than
+three tokens usually matches nothing — use two or three distinctive terms.
+
+**4. Walk a paginated feed** (`nvd_get_recent_cves` + cursor):
+
+```json
+{ "days": 7, "pageSize": 25 }
+```
+
+Take `pagination.nextCursor` from the response and call again with **identical**
+filters plus the cursor:
+
+```json
+{ "days": 7, "pageSize": 25, "cursor": "<pagination.nextCursor>" }
+```
+
+Feeds report `meta.ordering` (`published_desc` / `last_modified_desc`) so you can
+assert the newest-first reversal happened. Pass `metaOnly: true` to check counts
+and paging without the `items` array.
+
+**5. From a CVE to its CPE builds** (`nvd_search_cpe_matches` → `nvd_get_cpe`):
+
+```json
+{ "cveId": "CVE-2021-44228", "pageSize": 20 }
+```
+
+Find the row whose `criteria` is `cpe:2.3:a:apache:log4j:2.0:rc1:*:*:*:*:*:*`,
+then resolve the dictionary entry directly:
+
+```json
+{ "cpeName": "cpe:2.3:a:apache:log4j:2.0:rc1:*:*:*:*:*:*" }
+```
+
+Prefer `cpeNameId` (UUID) when you already have it — a CPE Match Criteria UUID
+is not a dictionary id. For change history, `nvd_get_cve_history` works the same
+way: `{ "cveId": "CVE-2021-44228", "pageSize": 20 }` and follow `nextCursor`.
 
 ## Response shape
 

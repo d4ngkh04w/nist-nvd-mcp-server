@@ -9,6 +9,11 @@ import type { ToolContext } from './tool-context.js';
  * `defineTool` keeps the handler fully typed (input/output inferred from the zod raw shapes) while
  * the registry only sees `AnyToolDefinition`, and it re-parses both the input and the output at
  * runtime so a handler can never leak a payload that does not match the published schema.
+ *
+ * The input schema is `.strict()`: unknown fields are rejected with an `INVALID_INPUT` error
+ * instead of being silently stripped, so typos (e.g. `cveid` instead of `cveId`) surface
+ * immediately. The output schema stays non-strict (strip unknown keys) so the service layer
+ * can evolve without breaking the contract.
  */
 export type AnyToolDefinition = {
   name: string;
@@ -32,7 +37,7 @@ export function defineTool<S extends z.ZodRawShape, O extends z.ZodRawShape>(def
     ctx: ToolContext,
   ) => Promise<z.infer<z.ZodObject<O>>>;
 }): AnyToolDefinition {
-  const inputSchema = z.object(definition.inputShape);
+  const inputSchema = z.object(definition.inputShape).strict();
   const outputSchema = z.object(definition.outputShape);
 
   return {

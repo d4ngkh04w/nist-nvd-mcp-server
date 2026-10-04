@@ -100,6 +100,7 @@ export const searchCvesTool = defineTool({
           `KEV date-added window sent upstream as kevStartDate/kevEndDate (max ${MAX_DATE_RANGE_DAYS} days). A date-only end (2024-04-30) is expanded to 23:59:59.999 so the whole day counts; a timestamp end is used verbatim, so prefer addedOn for one exact day`,
         ),
       })
+      .strict()
       .optional(),
     noRejected: z.boolean().optional().describe('Exclude rejected CVEs (upstream noRejected)'),
     hasCertAlerts: z.boolean().optional().describe('Only CVEs with CERT alerts'),

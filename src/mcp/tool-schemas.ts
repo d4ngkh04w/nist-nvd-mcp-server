@@ -48,6 +48,7 @@ export const dateWindowInput = z
         'ISO-8601 inclusive end (UTC). A date-only end covers the whole day and is sent as 23:59:59.999, so 2024-01-31 still includes records published during that day; a timestamp end is used verbatim',
       ),
   })
+  .strict()
   .describe('Closed date window; NVD rejects windows longer than 120 days');
 
 export const pageSizeInput = (max: number, defaultValue: number) =>
@@ -83,6 +84,7 @@ export const cvssFilterInput = z
       .optional()
       .describe('Full CVSS vector string, for example CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H'),
   })
+  .strict()
   .refine((value) => value.severity !== undefined || value.metrics !== undefined, {
     message: 'cvss requires at least one of severity or metrics',
   })
