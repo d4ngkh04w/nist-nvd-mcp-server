@@ -55,6 +55,8 @@ export type LoadOptions<T> = {
   warnings?: string[];
   /** When true the raw payload is also resolved from SQLite or the disk cache on a hit. */
   needsRaw?: boolean;
+  /** Cursor walks must reuse their cached snapshot, never refetch a different result set. */
+  cacheOnly?: boolean;
   /**
    * Reads the raw upstream payload persisted next to the cached entity (usually a repository
    * `findRawById`). Used on a fresh SQLite hit before falling back to the disk cache; a missing,
@@ -139,7 +141,7 @@ export class CachedResourceLoader {
       }
     }
 
-    if (cached !== null && !isExpired(cached.expiresAt, now)) {
+    if (cached !== null && (options.cacheOnly === true || !isExpired(cached.expiresAt, now))) {
       if (options.needsRaw === true && raw === undefined) {
         raw = this.readRawFromStore(options);
         if (raw === undefined) {
@@ -158,9 +160,14 @@ export class CachedResourceLoader {
           fetchedAt: cached.fetchedAt,
           expiresAt: cached.expiresAt,
           ageSeconds: ageSeconds(cached.fetchedAt, now),
+          stale: isExpired(cached.expiresAt, now),
           warnings,
         }),
       };
+    }
+
+    if (options.cacheOnly === true) {
+      throw options.notFound?.() ?? DomainError.cacheCorrupted('Cached snapshot is unavailable');
     }
 
     const stale = cached;
@@ -194,6 +201,12 @@ export class CachedResourceLoader {
         code: domainError.code,
         retryable: domainError.retryable,
       });
+      if (options.needsRaw === true && raw === undefined) {
+        raw = this.readRawFromStore(options);
+        if (raw === undefined) {
+          raw = (await this.readFromDisk<T>(options.resource, options.cacheKey))?.payload.raw;
+        }
+      }
       return {
         value: stale.value,
         raw,

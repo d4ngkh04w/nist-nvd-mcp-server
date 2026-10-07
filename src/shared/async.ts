@@ -1,9 +1,4 @@
-/**
- * In-process request de-duplication.
- *
- * Several tool calls (or paginated pages) can ask for the exact same upstream resource at the
- * same time; only one NVD request must be issued in that case.
- */
+/** Concurrent calls for the same key share one upstream request. */
 export class SingleFlight {
   private readonly inFlight = new Map<string, Promise<unknown>>();
 

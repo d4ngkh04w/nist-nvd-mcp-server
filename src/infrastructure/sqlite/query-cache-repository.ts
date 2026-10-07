@@ -34,7 +34,6 @@ ON CONFLICT(cache_key) DO UPDATE SET
     payload_json = excluded.payload_json,
     byte_size = excluded.byte_size`;
 
-/** SQLite-backed cache for page-level query results. */
 export class SqliteQueryCacheRepository implements QueryCacheRepositoryPort {
   constructor(private readonly deps: { db: SqliteDatabase; logger: Logger }) {}
 

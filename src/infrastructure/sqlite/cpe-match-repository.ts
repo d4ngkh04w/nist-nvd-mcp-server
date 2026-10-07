@@ -40,7 +40,6 @@ ON CONFLICT(match_criteria_id) DO UPDATE SET
     fetched_at = excluded.fetched_at,
     expires_at = excluded.expires_at`;
 
-/** SQLite-backed cache for CPE Match Criteria records. */
 export class SqliteCpeMatchRepository implements CpeMatchRepositoryPort {
   constructor(private readonly deps: { db: SqliteDatabase; logger: Logger }) {}
 

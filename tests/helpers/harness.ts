@@ -98,6 +98,7 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
       directory: temp.child('cache'),
       maxSizeBytes: 1_000_000,
       cleanupIntervalMs: 0,
+      staleRetentionMs: defaults.cache.staleRetentionMs,
       envelopeVersion: defaults.cache.envelopeVersion,
       maxEntryBytes: defaults.cache.maxEntryBytes,
       ...options.cache,

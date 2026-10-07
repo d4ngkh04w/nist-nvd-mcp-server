@@ -202,11 +202,11 @@ export class DiskCache {
   }
 
   /**
-   * Deletes expired/stale entries, then trims the cache by total size (oldest mtime first),
+   * Deletes entries beyond expiry plus retention, then trims by total size (oldest mtime first),
    * and finally removes abandoned atomic-write temp files. Per-file failures are logged at
    * debug level and never abort the sweep.
    */
-  async cleanup(options: { maxBytes: number; maxAgeMs: number }): Promise<DiskCacheCleanupStats> {
+  async cleanup(options: { maxBytes: number; maxAgeMs: number; staleRetentionMs?: number }): Promise<DiskCacheCleanupStats> {
     const nowMs = this.now().getTime();
     const maxAgeMs = options.maxAgeMs > 0 ? options.maxAgeMs : Number.POSITIVE_INFINITY;
     const maxBytes = options.maxBytes >= 0 ? options.maxBytes : Number.POSITIVE_INFINITY;
@@ -232,7 +232,8 @@ export class DiskCache {
         const tooOld = nowMs - fileStat.mtimeMs > maxAgeMs;
         const expired =
           fileStat.size > this.maxEntryBytes ||
-          (entry.name.endsWith(ENTRY_EXTENSION) && (await this.isExpiredEnvelope(filePath, nowMs)));
+          (entry.name.endsWith(ENTRY_EXTENSION) &&
+            (await this.isExpiredEnvelope(filePath, nowMs - (options.staleRetentionMs ?? 0))));
         if (tooOld || expired) {
           if (await this.removeFile(filePath)) {
             removedFiles += 1;

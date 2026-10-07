@@ -8,6 +8,7 @@ import {
   DATABASE_FILE_NAME,
   DEFAULT_CACHE_CLEANUP_INTERVAL_SECONDS,
   DEFAULT_CACHE_MAX_SIZE_MB,
+  DEFAULT_CACHE_STALE_RETENTION_SECONDS,
   DEFAULT_CURSOR_TTL_SECONDS,
   DEFAULT_NVD_MAX_CONCURRENCY,
   DEFAULT_NVD_MAX_RETRIES,
@@ -49,6 +50,7 @@ export type AppConfig = {
     readonly directory: string;
     readonly maxSizeBytes: number;
     readonly cleanupIntervalMs: number;
+    readonly staleRetentionMs: number;
     readonly envelopeVersion: number;
     readonly maxEntryBytes: number;
   };
@@ -122,6 +124,9 @@ const envSchema = z.object({
     DEFAULT_CACHE_CLEANUP_INTERVAL_SECONDS,
   ),
   CACHE_MAX_ENTRY_BYTES: positiveInt(1_024, 512 * 1_024 * 1_024).optional(),
+  CACHE_STALE_RETENTION_SECONDS: nonNegativeInt(0, 31_536_000).default(
+    DEFAULT_CACHE_STALE_RETENTION_SECONDS,
+  ),
 
   CVE_CACHE_TTL_SECONDS: positiveInt(1, 31_536_000).default(DEFAULT_TTL_SECONDS.cve),
   SEARCH_CACHE_TTL_SECONDS: positiveInt(1, 31_536_000).default(DEFAULT_TTL_SECONDS.cveSearch),
@@ -195,6 +200,7 @@ function buildConfig(parsed: ParsedEnv, root: string): AppConfig {
       directory: cacheDirectory,
       maxSizeBytes: parsed.CACHE_MAX_SIZE_MB * 1_024 * 1_024,
       cleanupIntervalMs: parsed.CACHE_CLEANUP_INTERVAL_SECONDS * 1_000,
+      staleRetentionMs: parsed.CACHE_STALE_RETENTION_SECONDS * 1_000,
       envelopeVersion: CACHE_ENVELOPE_VERSION,
       maxEntryBytes: parsed.CACHE_MAX_ENTRY_BYTES ?? MAX_CACHE_ENTRY_BYTES,
     },

@@ -93,10 +93,8 @@ function seedUpstream(harness: Harness, count: number): { ids: string[]; cpeIds:
     // Date-window feeds (nvd_search_cves, nvd_get_recent_cves, nvd_get_modified_cves).
     const startIndex = Number(request.params['startIndex'] ?? '0');
     const pageSize = Number(request.params['resultsPerPage'] ?? '20');
-    const items = Array.from(
-      { length: pageSize },
-      (_, offset) => byId.get(ids[(startIndex + offset) % ids.length] ?? '') ?? cveItem({ id: ids[0] ?? 'CVE-2024-1000' }),
-    );
+    // A real NVD page never wraps past totalResults or repeats rows to fill resultsPerPage.
+    const items = ids.slice(startIndex, startIndex + pageSize).map(id => byId.get(id)!);
     return {
       status: 200,
       body: cveResponse(items, {

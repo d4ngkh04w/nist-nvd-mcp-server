@@ -32,7 +32,6 @@ evaluations/report*.md
 BUG.md
 IMPLEMENT.md
 .agents/
-package-lock.json
 
 # OS junk
 .DS_Store

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { MAX_DATE_RANGE_DAYS } from '../../config/defaults.js';
+import { MAX_MODIFIED_FEED_RESULTS } from '../../application/modified-feed-snapshot.js';
 import {
   cacheMetaOutput,
   cveFeedPageInput,
@@ -32,8 +33,11 @@ export const getModifiedCvesTool = defineTool({
     'The cursor already carries the resolved window, so a relative window stays stable across pages and',
     'repeating `days` is optional; with a cursor, omitting `days`/`start`/`end` reuses the frozen window',
     'while a different explicit window is rejected with INVALID_CURSOR rather than silently re-anchored.',
-    'Cached for 5 minutes. For multi-page traversal pass fields:["id","lastModified"] to walk the feed',
-    'cheaply, and keep the same `fields` on every page so the pages stay comparable.',
+    'Cached for 5 minutes. For multi-page traversal pass fields:["id","lastModified"] to walk the feed cheaply,',
+    'and keep the same `fields` on every page so the pages stay comparable.',
+    `Loads the complete window before sorting (at most ${MAX_MODIFIED_FEED_RESULTS} CVEs, five upstream pages and roughly 4 MB of summaries);`,
+    'narrow filters or use nvd_search_cves if the snapshot budget is exceeded. Cold requests may take several rate-limit intervals.',
+    'Cursor pages reuse the original snapshot even after its freshness TTL; an evicted or replaced snapshot returns INVALID_CURSOR.',
     'Pass metaOnly:true for pagination and meta without items; pagination.page and pagination.pageCount',
     'still report the position and the estimated page total.',
   ].join(' '),

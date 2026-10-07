@@ -38,9 +38,7 @@ export type App = {
   readonly logger: Logger;
   readonly server: McpServer;
   readonly toolContext: ToolContext;
-  /** Runs one cache-cleanup pass (used by tests and by the periodic timer). */
   runMaintenanceOnce(): Promise<void>;
-  /** Releases the database handle and stops maintenance timers. */
   close(): void;
 };
 
@@ -50,12 +48,6 @@ export type CreateAppOptions = {
   clock?: Clock;
 };
 
-/**
- * Composition root.
- *
- * Wires configuration -> infrastructure (SQLite, disk cache, NVD HTTP client, rate limiter) ->
- * application services -> MCP server. Nothing here writes to stdout.
- */
 export async function createApp(options: CreateAppOptions): Promise<App> {
   const { config, logger } = options;
   const clock = options.clock ?? systemClock;
@@ -194,6 +186,7 @@ export async function createApp(options: CreateAppOptions): Promise<App> {
     maxBytes: config.cache.maxSizeBytes,
     maxAgeMs: 0,
     intervalMs: config.cache.cleanupIntervalMs,
+    staleRetentionMs: config.cache.staleRetentionMs,
     logger: logger.child({ component: 'maintenance' }),
     clock,
   });

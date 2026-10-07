@@ -213,16 +213,7 @@ export class NvdHttpClient {
         return { kind: error.retryable ? 'retry' : 'fail', error };
       }
 
-      const text = await response.text();
-      if (text.length > this.maxResponseBytes) {
-        return {
-          kind: 'fail',
-          error: DomainError.upstreamBadResponse(
-            `NVD response exceeded the ${this.maxResponseBytes} byte limit`,
-            { endpoint },
-          ),
-        };
-      }
+      const text = await readBoundedBody(response, this.maxResponseBytes, false, endpoint);
       try {
         return { kind: 'success', body: JSON.parse(text) as unknown };
       } catch {
@@ -317,10 +308,53 @@ function readErrorCode(error: unknown): string | undefined {
 
 async function readBodySnippet(response: Response): Promise<string> {
   try {
-    const text = await response.text();
-    return text.slice(0, 200);
+    return await readBoundedBody(response, 200, true);
   } catch {
     return '';
+  }
+}
+
+/** Count decoded transport bytes before buffering; stop reading as soon as the bound is reached. */
+async function readBoundedBody(
+  response: Response,
+  maxBytes: number,
+  truncate: boolean,
+  endpoint?: string,
+): Promise<string> {
+  if (response.body === null) return '';
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let bytes = 0;
+  let complete = false;
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) {
+        complete = true;
+        break;
+      }
+      const remaining = maxBytes - bytes;
+      if (chunk.value.byteLength > remaining) {
+        if (!truncate) {
+          throw DomainError.upstreamBadResponse(
+            `NVD response exceeded the ${maxBytes} byte limit`, { endpoint },
+          );
+        }
+        chunks.push(chunk.value.slice(0, remaining));
+        bytes = maxBytes;
+        break;
+      }
+      chunks.push(chunk.value);
+      bytes += chunk.value.byteLength;
+      if (truncate && bytes === maxBytes) break;
+    }
+    return new TextDecoder().decode(Buffer.concat(chunks, bytes));
+  } finally {
+    if (!complete) {
+      // Preserve the original limit/network failure even if cancellation itself fails.
+      await reader.cancel().catch(() => undefined);
+    }
+    reader.releaseLock();
   }
 }
 

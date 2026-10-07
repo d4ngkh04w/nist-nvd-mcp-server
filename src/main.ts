@@ -4,13 +4,7 @@ import { createStdioTransport } from './mcp/transport.js';
 import { TOOL_COUNT } from './mcp/tools/index.js';
 import { createStderrLogger, redirectConsoleToStderr } from './shared/logger.js';
 
-/**
- * stdio entry point.
- *
- * Startup order: environment -> logger (stderr only) -> storage/migrations -> services ->
- * MCP server -> transport. `console.*` is redirected to stderr so no dependency can pollute the
- * JSON-RPC stream on stdout.
- */
+// Keep dependency logs off stdout, which belongs to the MCP protocol.
 async function main(): Promise<void> {
   loadDotEnvFile();
   const config = loadConfig(process.env);

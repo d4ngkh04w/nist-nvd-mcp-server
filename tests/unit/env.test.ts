@@ -18,3 +18,16 @@ describe('loadConfig NVD transport security', () => {
     );
   });
 });
+
+describe('stale cache retention configuration', () => {
+  it('defaults to seven days and allows explicit zero retention', () => {
+    expect(loadConfig({}).cache.staleRetentionMs).toBe(7 * 86_400_000);
+    expect(loadConfig({ CACHE_STALE_RETENTION_SECONDS: '0' }).cache.staleRetentionMs).toBe(0);
+    expect(loadConfig({ CACHE_STALE_RETENTION_SECONDS: '60' }).cache.staleRetentionMs).toBe(60_000);
+  });
+
+  it('rejects negative and non-integer retention', () => {
+    expect(() => loadConfig({ CACHE_STALE_RETENTION_SECONDS: '-1' })).toThrow(ConfigError);
+    expect(() => loadConfig({ CACHE_STALE_RETENTION_SECONDS: '0.5' })).toThrow(ConfigError);
+  });
+});

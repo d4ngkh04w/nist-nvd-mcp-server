@@ -106,6 +106,11 @@ function parsePayload(
 
   const resolvedWindow = parseResolvedWindow(record.resolvedWindow);
   const page = parsePage(record.page);
+  const snapshotFetchedAt = record.snapshotFetchedAt;
+  if (snapshotFetchedAt !== undefined &&
+      (typeof snapshotFetchedAt !== 'string' || parseIsoDate(snapshotFetchedAt) === null)) {
+    throw invalid('timestamps', 'Cursor snapshot timestamp is invalid');
+  }
 
   return {
     version: CURSOR_VERSION,
@@ -114,6 +119,7 @@ function parsePayload(
     startIndex,
     pageSize,
     ...(page !== undefined ? { page } : {}),
+    ...(typeof snapshotFetchedAt === 'string' ? { snapshotFetchedAt } : {}),
     issuedAt: toIso(issuedAt),
     expiresAt: toIso(expiresAt),
     ...(resolvedWindow !== undefined ? { resolvedWindow } : {}),
@@ -180,6 +186,7 @@ export function createHmacCursorCodec(options: HmacCursorCodecOptions): CursorCo
         startIndex: payload.startIndex,
         pageSize: payload.pageSize,
         ...(payload.page !== undefined ? { page: payload.page } : {}),
+        ...(payload.snapshotFetchedAt !== undefined ? { snapshotFetchedAt: payload.snapshotFetchedAt } : {}),
         issuedAt: toIso(issuedAt),
         expiresAt: toIso(addSeconds(issuedAt, ttlSeconds)),
         ...(payload.resolvedWindow !== undefined

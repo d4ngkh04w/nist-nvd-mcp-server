@@ -1,7 +1,3 @@
-/**
- * Inference domain model for CVE records.
- */
-
 export type CvssData = {
   version: string;
   vectorString: string;
@@ -84,7 +80,6 @@ export type CveDescription = {
   value: string;
 };
 
-/** Full CVE detail as returned by `nvd_get_cve`. */
 export type CveDetails = {
   id: string;
   sourceIdentifier: string;

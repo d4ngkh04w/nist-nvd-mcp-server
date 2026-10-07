@@ -2,11 +2,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 import type { ToolError } from '../domain/errors.js';
 
-/**
- * Builds a successful tool result.
- *
- * `content[0].text` mirrors `structuredContent` so text-only clients see the same payload.
- */
+/** Mirror structured output as text for clients that do not support structuredContent. */
 export function buildSuccessResult(payload: Record<string, unknown>): CallToolResult {
   return {
     content: [{ type: 'text', text: JSON.stringify(payload) }],
@@ -14,12 +10,7 @@ export function buildSuccessResult(payload: Record<string, unknown>): CallToolRe
   };
 }
 
-/**
- * Builds a tool error result.
- *
- * Errors carry the machine-readable `ToolError` contract as JSON text; `structuredContent` is
- * intentionally omitted because the tool output schema describes successful payloads only.
- */
+/** Omit structuredContent on errors: the published output schema describes success only. */
 export function buildErrorResult(error: ToolError): CallToolResult {
   return {
     content: [{ type: 'text', text: JSON.stringify(error) }],
@@ -27,7 +18,6 @@ export function buildErrorResult(error: ToolError): CallToolResult {
   };
 }
 
-/** Reads `meta.cacheStatus` for the `tool_call` log line. */
 export function extractCacheStatus(payload: unknown): string | undefined {
   if (payload === null || typeof payload !== 'object') {
     return undefined;

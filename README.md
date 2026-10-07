@@ -102,6 +102,15 @@ Feeds report `meta.ordering` (`published_desc` / `last_modified_desc`) so you ca
 assert the newest-first reversal happened. Pass `metaOnly: true` to check counts
 and paging without the `items` array.
 
+The modified feed loads the complete filtered set before sorting: NVD itself sorts
+by publication date, even with last-modified filters. To bound work, this feed allows
+at most 10,000 CVEs, five upstream pages and a roughly 4 MB summary snapshot. Larger
+sets return `INVALID_INPUT`; narrow the date window/filters or use `nvd_search_cves`
+without a global last-modified ordering guarantee. A cold request can therefore
+take several request intervals. Cursors reuse the original cached snapshot even
+after its freshness TTL passes, and return `INVALID_CURSOR` if that snapshot is
+evicted or replaced by a fresh first-page query. Restart pagination in that case.
+
 **5. From a CVE to its CPE builds** (`nvd_search_cpe_matches` → `nvd_get_cpe`):
 
 ```json
@@ -136,7 +145,10 @@ way: `{ "cveId": "CVE-2021-44228", "pageSize": 20 }` and follow `nextCursor`.
 
 ## Caching and rate limiting
 
-- A cache hit never calls NVD. Expired entries fall back to the stale copy with a warning.
+- A fresh cache hit never calls NVD. Expired entries are refreshed; upstream failures
+  fall back to the stale copy with a warning.
+- Maintenance keeps expired entries for an additional 7 days by default
+  (`CACHE_STALE_RETENTION_SECONDS`). Disk size limits may evict entries sooner.
 - Concurrent identical requests are collapsed.
 - Upstream calls are serialized (`NVD_MIN_INTERVAL_MS`, default 6000) and retried with backoff.
 - Default files live under `./data`; migrations are applied at startup.
@@ -152,6 +164,7 @@ Copy `.env.example` to `.env`. Key variables:
 | `NVD_MIN_INTERVAL_MS` | `6000` | Minimum gap between upstream requests |
 | `SQLITE_PATH` | `./data/nvd.sqlite` | Database file |
 | `CACHE_DIRECTORY` | `./data/cache` | JSON disk cache directory |
+| `CACHE_STALE_RETENTION_SECONDS` | `604800` | Retain expired entries for outage fallback; `0` evicts at expiry |
 | `CURSOR_SECRET` | random | HMAC key for cursors |
 | `CURSOR_TTL_SECONDS` | `1800` | Cursor lifetime |
 | `LOG_LEVEL` | `info` | `debug` / `info` / `warn` / `error` / `silent` |
@@ -176,6 +189,7 @@ npm run dev         # tsx src/main.ts, no build step
 ```
 
 Tests never touch the real NVD API - they use a mock server, a temp SQLite DB, and a temp cache dir.
+GitHub Actions runs the same checks on Node.js 22 and 24.
 
 ## Troubleshooting
 

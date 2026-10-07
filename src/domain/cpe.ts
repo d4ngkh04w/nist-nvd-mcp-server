@@ -1,7 +1,3 @@
-/**
- * Inference domain model for CPE names and CPE Match Criteria.
- */
-
 export type CpeTitle = {
   title: string;
   lang: string;

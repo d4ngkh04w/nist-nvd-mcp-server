@@ -1,14 +1,6 @@
 import { DomainError } from './errors.js';
 
-/**
- * Response shaping for the payload-heavy tools.
- *
- * A `fields` list is an allowlist of top-level item keys. It is purely presentational: it never
- * changes which records are fetched, the cache identity, the cursor or the pagination, and an
- * omitted list leaves every key in place.
- */
-
-/** Fields of the compact CVE projection (`CveSummary`). */
+/** Field projection affects output only, never fetched records, cache keys or cursors. */
 export const CVE_SUMMARY_FIELDS = [
   'id',
   'published',
@@ -23,7 +15,6 @@ export const CVE_SUMMARY_FIELDS = [
   'referenceCount',
 ] as const;
 
-/** Fields of the full CVE record (`CveDetails`). */
 export const CVE_DETAILS_FIELDS = [
   'id',
   'sourceIdentifier',
@@ -43,7 +34,6 @@ export const CVE_DETAILS_FIELDS = [
   'raw',
 ] as const;
 
-/** Fields of a CVE change-history record. */
 export const CVE_CHANGE_EVENT_FIELDS = [
   'cveId',
   'eventName',
@@ -53,7 +43,6 @@ export const CVE_CHANGE_EVENT_FIELDS = [
   'details',
 ] as const;
 
-/** Fields of a CPE Match Criteria record. */
 export const CPE_MATCH_FIELDS = [
   'matchCriteriaId',
   'criteria',
@@ -68,7 +57,6 @@ export const CPE_MATCH_FIELDS = [
   'matches',
 ] as const;
 
-/** Fields of a CPE dictionary entry. */
 export const CPE_RECORD_FIELDS = [
   'cpeNameId',
   'cpeName',
@@ -155,7 +143,6 @@ export function projectFields<T extends object>(value: T, fields: readonly strin
   return projected as T;
 }
 
-/** Applies {@link projectFields} to every element of a collection. */
 export function projectFieldList<T extends object>(
   items: readonly T[],
   fields: readonly string[] | undefined,

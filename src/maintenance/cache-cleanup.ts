@@ -15,6 +15,8 @@ export type CacheCleanupDependencies = {
   maxBytes: number;
   maxAgeMs: number;
   intervalMs: number;
+  /** Grace period after expiry; zero preserves immediate eviction. */
+  staleRetentionMs?: number;
   logger: Logger;
   clock: Clock;
 };
@@ -28,7 +30,7 @@ export type CacheCleanupHandle = {
 const NO_AGE_LIMIT_MS = Number.MAX_SAFE_INTEGER;
 
 /**
- * Periodically removes expired SQLite rows and disk-cache entries.
+ * Periodically removes SQLite rows and disk entries after expiry plus their stale grace period.
  *
  * Cleanup is best-effort maintenance: every failure is logged and swallowed so a broken cache
  * can never crash the MCP server. Timer handles are unref'd and therefore never keep the
@@ -41,11 +43,12 @@ export function startCacheCleanup(deps: CacheCleanupDependencies): CacheCleanupH
   const runOnce = async (): Promise<void> => {
     const startedAt = Date.now();
     const now = clock.now();
+    const evictionCutoff = new Date(now.getTime() - (deps.staleRetentionMs ?? 0));
     const failedTargets: string[] = [];
 
     let queryCacheDeleted = 0;
     try {
-      queryCacheDeleted = queryCache.deleteExpired(now);
+      queryCacheDeleted = queryCache.deleteExpired(evictionCutoff);
     } catch (error) {
       failedTargets.push('query_cache');
       logger.error('cache_cleanup_failed', { target: 'query_cache', error });
@@ -54,7 +57,7 @@ export function startCacheCleanup(deps: CacheCleanupDependencies): CacheCleanupH
     const repositoryDeleted: Record<string, number> = {};
     for (const repository of repositories) {
       try {
-        repositoryDeleted[repository.name] = repository.deleteExpired(now);
+        repositoryDeleted[repository.name] = repository.deleteExpired(evictionCutoff);
       } catch (error) {
         failedTargets.push(repository.name);
         logger.error('cache_cleanup_failed', { target: repository.name, error });
@@ -63,7 +66,11 @@ export function startCacheCleanup(deps: CacheCleanupDependencies): CacheCleanupH
 
     let disk: DiskCacheCleanupStats | null = null;
     try {
-      disk = await diskCache.cleanup({ maxBytes, maxAgeMs: effectiveMaxAgeMs });
+      disk = await diskCache.cleanup({
+        maxBytes,
+        maxAgeMs: effectiveMaxAgeMs,
+        ...(deps.staleRetentionMs !== undefined ? { staleRetentionMs: deps.staleRetentionMs } : {}),
+      });
     } catch (error) {
       failedTargets.push('disk_cache');
       logger.error('cache_cleanup_failed', { target: 'disk_cache', error });

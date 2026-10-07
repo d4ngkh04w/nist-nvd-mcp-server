@@ -19,6 +19,8 @@ export type CursorPayload = {
   page?: number;
   issuedAt: string;
   expiresAt: string;
+  /** Modification-sorted snapshot generation; reject a cursor if the cache was replaced. */
+  snapshotFetchedAt?: string;
   /**
    * Date window that was resolved when the cursor was issued.
    *
@@ -62,6 +64,7 @@ export type CursorInput = {
   pageSize: number;
   /** 1-based ordinal of the page this cursor points at. */
   page?: number;
+  snapshotFetchedAt?: string;
   resolvedWindow?: {
     start: string;
     end: string;

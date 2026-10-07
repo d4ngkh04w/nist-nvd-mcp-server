@@ -437,12 +437,12 @@ describe('nvd_search_cves and the recent/modified feeds (integration)', () => {
     expect(result.isError).toBe(false);
     expect(readMeta(result.structuredContent)['ordering']).toBe('last_modified_desc');
 
-    const pageRequest = harness.nvd.requestsFor('/cves/2.0')[1];
+    const pageRequest = harness.nvd.requestsFor('/cves/2.0')[0];
     expect(pageRequest?.params).toMatchObject({
       lastModStartDate: '2026-01-01T00:00:00.000',
       lastModEndDate: '2026-01-04T00:00:00.000',
-      startIndex: '15',
-      resultsPerPage: '10',
+      startIndex: '0',
+      resultsPerPage: '2000',
     });
 
     const items = readItems(result.structuredContent);

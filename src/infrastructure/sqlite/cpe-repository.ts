@@ -38,7 +38,6 @@ ON CONFLICT(cpe_name_id) DO UPDATE SET
     fetched_at = excluded.fetched_at,
     expires_at = excluded.expires_at`;
 
-/** SQLite-backed cache for Official CPE Dictionary records. */
 export class SqliteCpeRepository implements CpeRepositoryPort {
   constructor(private readonly deps: { db: SqliteDatabase; logger: Logger }) {}
 
