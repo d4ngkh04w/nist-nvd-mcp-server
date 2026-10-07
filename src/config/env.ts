@@ -14,6 +14,8 @@ import {
   DEFAULT_NVD_MAX_RETRIES,
   DEFAULT_NVD_MIN_INTERVAL_MS,
   DEFAULT_NVD_REQUEST_TIMEOUT_MS,
+  DEFAULT_MCP_TOOL_TIMEOUT_MS,
+  DEFAULT_MCP_MAX_OUTPUT_BYTES,
   DEFAULT_RETRY_BASE_DELAY_MS,
   DEFAULT_SQLITE_BUSY_TIMEOUT_MS,
   DEFAULT_TTL_SECONDS,
@@ -32,6 +34,10 @@ export class ConfigError extends Error {
 }
 
 export type AppConfig = {
+  readonly mcp: {
+    readonly toolTimeoutMs: number;
+    readonly maxOutputBytes: number;
+  };
   readonly nvdApiKey: string | undefined;
   readonly nvdBaseUrl: string;
   readonly nvd: {
@@ -97,6 +103,8 @@ const positiveInt = (minimum = 1, maximum = Number.MAX_SAFE_INTEGER) =>
   z.coerce.number().int().min(minimum).max(maximum);
 
 const envSchema = z.object({
+  MCP_TOOL_TIMEOUT_MS: positiveInt(100, 3_600_000).default(DEFAULT_MCP_TOOL_TIMEOUT_MS),
+  MCP_MAX_OUTPUT_BYTES: positiveInt(1_024, 16_000_000).default(DEFAULT_MCP_MAX_OUTPUT_BYTES),
   NVD_API_KEY: optionalString,
   NVD_BASE_URL: z
     .preprocess(emptyToUndefined, z.string().url().default(NVD_DEFAULT_BASE_URL))
@@ -182,6 +190,10 @@ function buildConfig(parsed: ParsedEnv, root: string): AppConfig {
     : path.join(root, 'migrations');
 
   return {
+    mcp: {
+      toolTimeoutMs: parsed.MCP_TOOL_TIMEOUT_MS,
+      maxOutputBytes: parsed.MCP_MAX_OUTPUT_BYTES,
+    },
     nvdApiKey: parsed.NVD_API_KEY,
     nvdBaseUrl: parsed.NVD_BASE_URL.replace(/\/+$/, ''),
     nvd: {

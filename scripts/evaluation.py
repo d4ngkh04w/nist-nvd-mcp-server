@@ -77,10 +77,12 @@ def parse_evaluation_file(file_path: Path) -> list[dict[str, Any]]:
             answer_elem = qa_pair.find("answer")
 
             if question_elem is not None and answer_elem is not None:
-                evaluations.append({
-                    "question": (question_elem.text or "").strip(),
-                    "answer": (answer_elem.text or "").strip(),
-                })
+                evaluations.append(
+                    {
+                        "question": (question_elem.text or "").strip(),
+                        "answer": (answer_elem.text or "").strip(),
+                    }
+                )
 
         return evaluations
     except Exception as e:
@@ -192,14 +194,16 @@ def to_openai_tools(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
         parameters = tool.get("input_schema") or tool.get("inputSchema")
         if not isinstance(parameters, dict):
             parameters = {"type": "object", "properties": {}}
-        converted.append({
-            "type": "function",
-            "function": {
-                "name": tool["name"],
-                "description": tool.get("description") or "",
-                "parameters": parameters,
-            },
-        })
+        converted.append(
+            {
+                "type": "function",
+                "function": {
+                    "name": tool["name"],
+                    "description": tool.get("description") or "",
+                    "parameters": parameters,
+                },
+            }
+        )
     return converted
 
 
@@ -218,7 +222,7 @@ class ProviderError(RuntimeError):
     """Raised when a provider call fails."""
 
 
-REASONING_EFFORT_VALUES = ("minimal", "low", "medium", "high")
+REASONING_EFFORT_VALUES = ("minimal", "low", "medium", "high", "xhigh")
 
 
 def completion_kwargs(
@@ -288,11 +292,13 @@ async def agent_loop_openai(
             tool_metrics[tool_name]["count"] += 1
             tool_metrics[tool_name]["durations"].append(tool_duration)
 
-            messages.append({
-                "role": "tool",
-                "tool_call_id": tool_call.id,
-                "content": tool_response,
-            })
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": tool_response,
+                }
+            )
 
         response = await asyncio.to_thread(
             client.chat.completions.create,
@@ -314,7 +320,10 @@ def _assistant_message(response: Any) -> dict[str, Any]:
             {
                 "id": tc.id,
                 "type": "function",
-                "function": {"name": tc.function.name, "arguments": tc.function.arguments or "{}"},
+                "function": {
+                    "name": tc.function.name,
+                    "arguments": tc.function.arguments or "{}",
+                },
             }
             for tc in tool_calls
         ]
@@ -335,7 +344,9 @@ async def evaluate_single_task(
     start_time = time.time()
 
     print(f"Task {task_index + 1}: Running task with question: {qa_pair['question']}")
-    response, tool_metrics = await agent_loop(client, model, qa_pair["question"], tools, connection)
+    response, tool_metrics = await agent_loop(
+        client, model, qa_pair["question"], tools, connection
+    )
 
     response_value = extract_xml_content(response, "response")
     summary = extract_xml_content(response, "summary")
@@ -355,7 +366,9 @@ async def evaluate_single_task(
         "match": match_method,
         "total_duration": duration_seconds,
         "tool_calls": tool_metrics,
-        "num_tool_calls": sum(len(metrics["durations"]) for metrics in tool_metrics.values()),
+        "num_tool_calls": sum(
+            len(metrics["durations"]) for metrics in tool_metrics.values()
+        ),
         "summary": summary,
         "feedback": feedback,
     }
@@ -449,8 +462,12 @@ async def run_evaluation(
 
     correct = sum(r["score"] for r in results)
     accuracy = (correct / len(results)) * 100 if results else 0
-    average_duration_s = sum(r["total_duration"] for r in results) / len(results) if results else 0
-    average_tool_calls = sum(r["num_tool_calls"] for r in results) / len(results) if results else 0
+    average_duration_s = (
+        sum(r["total_duration"] for r in results) / len(results) if results else 0
+    )
+    average_tool_calls = (
+        sum(r["num_tool_calls"] for r in results) / len(results) if results else 0
+    )
     total_tool_calls = sum(r["num_tool_calls"] for r in results)
 
     lenient = [
@@ -462,8 +479,11 @@ async def run_evaluation(
     report = REPORT_HEADER.format(
         model=model,
         reasoning_effort=reasoning_effort or "default (not sent)",
-        grading="exact match only (--strict-match)" if strict_match
-        else "content match (exact, contained, or prose without the <response> tag)",
+        grading=(
+            "exact match only (--strict-match)"
+            if strict_match
+            else "content match (exact, contained, or prose without the <response> tag)"
+        ),
         correct=correct,
         total=len(results),
         accuracy=accuracy,
@@ -473,21 +493,23 @@ async def run_evaluation(
         total_tool_calls=total_tool_calls,
     )
 
-    report += "".join([
-        TASK_TEMPLATE.format(
-            task_num=i + 1,
-            question=qa_pair["question"],
-            expected_answer=qa_pair["answer"],
-            actual_answer=result["actual"] or "N/A",
-            correct_indicator="✅" if result["score"] else "❌",
-            match_method=result["match"],
-            total_duration=result["total_duration"],
-            tool_calls=json.dumps(result["tool_calls"], indent=2),
-            summary=result["summary"] or "N/A",
-            feedback=result["feedback"] or "N/A",
-        )
-        for i, (qa_pair, result) in enumerate(zip(qa_pairs, results))
-    ])
+    report += "".join(
+        [
+            TASK_TEMPLATE.format(
+                task_num=i + 1,
+                question=qa_pair["question"],
+                expected_answer=qa_pair["answer"],
+                actual_answer=result["actual"] or "N/A",
+                correct_indicator="✅" if result["score"] else "❌",
+                match_method=result["match"],
+                total_duration=result["total_duration"],
+                tool_calls=json.dumps(result["tool_calls"], indent=2),
+                summary=result["summary"] or "N/A",
+                feedback=result["feedback"] or "N/A",
+            )
+            for i, (qa_pair, result) in enumerate(zip(qa_pairs, results))
+        ]
+    )
 
     return report
 
@@ -558,33 +580,67 @@ Examples:
     )
 
     parser.add_argument("eval_file", type=Path, help="Path to evaluation XML file")
-    parser.add_argument("-t", "--transport", choices=["stdio", "sse", "http"], default="stdio", help="Transport type (default: stdio)")
-    parser.add_argument("-m", "--model", required=True, help="Model id to evaluate with")
-    parser.add_argument("--base-url", required=True, help="OpenAI-compatible base URL, e.g. http://127.0.0.1:20128/v1")
-    parser.add_argument("--api-key-env", help="Env var holding the API key (default: OPENAI_API_KEY)")
+    parser.add_argument(
+        "-t",
+        "--transport",
+        choices=["stdio", "sse", "http"],
+        default="stdio",
+        help="Transport type (default: stdio)",
+    )
+    parser.add_argument(
+        "-m", "--model", required=True, help="Model id to evaluate with"
+    )
+    parser.add_argument(
+        "--base-url",
+        required=True,
+        help="OpenAI-compatible base URL, e.g. http://127.0.0.1:20128/v1",
+    )
+    parser.add_argument(
+        "--api-key-env", help="Env var holding the API key (default: OPENAI_API_KEY)"
+    )
 
     stdio_group = parser.add_argument_group("stdio options")
-    stdio_group.add_argument("-c", "--command", help="Command to run MCP server (stdio only)")
-    stdio_group.add_argument("-a", "--args", nargs="+", help="Arguments for the command (stdio only)")
-    stdio_group.add_argument("-e", "--env", nargs="+", help="Environment variables in KEY=VALUE format (stdio only)")
+    stdio_group.add_argument(
+        "-c", "--command", help="Command to run MCP server (stdio only)"
+    )
+    stdio_group.add_argument(
+        "-a", "--args", nargs="+", help="Arguments for the command (stdio only)"
+    )
+    stdio_group.add_argument(
+        "-e",
+        "--env",
+        nargs="+",
+        help="Environment variables in KEY=VALUE format (stdio only)",
+    )
 
     remote_group = parser.add_argument_group("sse/http options")
     remote_group.add_argument("-u", "--url", help="MCP server URL (sse/http only)")
-    remote_group.add_argument("-H", "--header", nargs="+", dest="headers", help="HTTP headers in 'Key: Value' format (sse/http only)")
+    remote_group.add_argument(
+        "-H",
+        "--header",
+        nargs="+",
+        dest="headers",
+        help="HTTP headers in 'Key: Value' format (sse/http only)",
+    )
 
     parser.add_argument(
         "--reasoning-effort",
         choices=REASONING_EFFORT_VALUES,
         help="Send reasoning_effort to the provider (default: omit it, and use temperature=0). "
-             "Reasoning models reject an explicit temperature, so it is dropped when this is set.",
+        "Reasoning models reject an explicit temperature, so it is dropped when this is set.",
     )
-    parser.add_argument("-o", "--output", type=Path, help="Output file for evaluation report (default: stdout)")
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        help="Output file for evaluation report (default: stdout)",
+    )
     parser.add_argument(
         "--strict-match",
         action="store_true",
         help="Score only an exact string match. By default a task is also correct when the "
-             "ground truth appears inside a longer answer or in prose without the <response> tag; "
-             "those passes are labelled in the report.",
+        "ground truth appears inside a longer answer or in prose without the <response> tag; "
+        "those passes are labelled in the report.",
     )
 
     args = parser.parse_args()

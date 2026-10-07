@@ -35,6 +35,7 @@ export type ToolCallOutcome = {
 };
 
 export type HarnessOptions = {
+  mcp?: Partial<AppConfig['mcp']>;
   nvd?: NvdMockServer;
   clock?: MutableClock;
   /** When set, requests must carry it in the `apiKey` header (and never in the URL). */
@@ -85,6 +86,7 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
 
   const config: AppConfig = {
     ...defaults,
+    mcp: { ...defaults.mcp, ...options.mcp },
     nvdApiKey: options.apiKey,
     nvdBaseUrl: nvd.baseUrl,
     nvd: { ...FAST_NVD_SETTINGS, ...options.nvdOverrides },

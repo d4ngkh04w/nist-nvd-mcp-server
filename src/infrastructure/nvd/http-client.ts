@@ -1,6 +1,7 @@
 import { DomainError, isDomainError } from '../../domain/errors.js';
 import type { Logger } from '../../shared/logger.js';
 import { sleep } from '../../shared/async.js';
+import { currentOperation, throwIfCancelled, waitWithSignal } from '../../shared/operation.js';
 import { MAX_RETRY_DELAY_MS } from '../../config/defaults.js';
 import type { SequentialRateLimiter } from '../rate-limit/sequential-rate-limiter.js';
 
@@ -60,7 +61,7 @@ export class NvdHttpClient {
   private readonly logger: Logger;
   private readonly fetchImpl: typeof fetch;
   private readonly now: () => number;
-  private readonly wait: (ms: number) => Promise<void>;
+  private readonly wait: (ms: number, signal?: AbortSignal) => Promise<void>;
   private readonly random: () => number;
   private readonly maxResponseBytes: number;
 
@@ -84,17 +85,22 @@ export class NvdHttpClient {
    * Every attempt passes through the shared rate limiter.
    */
   async getJson(path: string, params: NvdQueryParams = {}): Promise<unknown> {
+    const operation = currentOperation();
+    const signal = operation?.signal;
     const endpoint = path.startsWith('/') ? path : `/${path}`;
     const url = `${this.baseUrl}${endpoint}${serializeQuery(params)}`;
     const attempts = this.maxRetries + 1;
     let lastError: DomainError | undefined;
 
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      throwIfCancelled(signal);
+      operation?.onProgress?.(`Waiting for NVD request (attempt ${attempt})`);
       const startedAt = this.now();
       const outcome = await this.attempt(url, endpoint, attempt, Object.keys(params));
       const durationMs = this.now() - startedAt;
 
       if (outcome.kind === 'success') {
+        operation?.onProgress?.('Received NVD response');
         this.logger.debug('nvd_response', {
           endpoint,
           attempt,
@@ -125,7 +131,8 @@ export class NvdHttpClient {
         delayMs,
         code: outcome.error.code,
       });
-      await this.wait(delayMs);
+      operation?.onProgress?.(`Retrying NVD request after ${delayMs} ms`);
+      await waitWithSignal(this.wait(delayMs, signal), signal);
     }
 
     throw lastError ?? DomainError.upstreamUnavailable('NVD request failed');
@@ -148,8 +155,11 @@ export class NvdHttpClient {
   ): Promise<AttemptOutcome> {
     this.logger.debug('nvd_request', { endpoint, attempt, paramKeys });
     try {
-      return await this.rateLimiter.schedule(async () => this.performRequest(url, endpoint, paramKeys));
+      return await this.rateLimiter.schedule(
+        async () => this.performRequest(url, endpoint, paramKeys), currentOperation()?.signal,
+      );
     } catch (error) {
+      throwIfCancelled();
       if (isDomainError(error)) {
         return { kind: error.retryable ? 'retry' : 'fail', error };
       }
@@ -180,6 +190,8 @@ export class NvdHttpClient {
   }
 
   private async performRequest(url: string, endpoint: string, paramKeys: string[]): Promise<AttemptOutcome> {
+    const signal = currentOperation()?.signal;
+    throwIfCancelled(signal);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
     if (typeof timeout.unref === 'function') {
@@ -193,7 +205,7 @@ export class NvdHttpClient {
       const response = await this.fetchImpl(url, {
         method: 'GET',
         headers,
-        signal: controller.signal,
+        signal: signal === undefined ? controller.signal : AbortSignal.any([signal, controller.signal]),
         // NVD never redirects. Following one would attach the `apiKey` header to whatever host the
         // response points at, so redirects are refused instead of silently leaking the credential.
         redirect: 'error',

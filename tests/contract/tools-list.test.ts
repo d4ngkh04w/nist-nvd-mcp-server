@@ -164,4 +164,18 @@ describe('MCP contract: tools/list', () => {
     // Keeps SERVER_VERSION from drifting away from the published package version.
     expect(version?.version).toBe(packageJsonVersion);
   });
+
+  it('publishes server guidance and machine-readable field allowlists', async () => {
+    harness = await createHarness();
+    expect(harness.client?.getInstructions()).toContain('meta.stale');
+    expect(harness.client?.getInstructions()).toContain('matchCriteriaId');
+    const response = await harness.client?.listTools();
+    for (const tool of response?.tools ?? []) {
+      const properties = tool.inputSchema.properties as Record<string, { items?: { enum?: string[] } }>;
+      if (properties['fields']) {
+        expect(properties['fields'].items?.enum, tool.name).toBeDefined();
+        expect(properties['fields'].items?.enum?.length, tool.name).toBeGreaterThan(0);
+      }
+    }
+  });
 });

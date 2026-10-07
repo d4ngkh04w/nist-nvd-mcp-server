@@ -7,6 +7,7 @@ import type { NvdCveClientPort, QueryCacheRepositoryPort } from '../domain/ports
 import type { CachedPage, CveQuery, NvdPage, NvdPageRequest, WithRaw } from '../domain/queries.js';
 import { buildQueryIdentity } from '../infrastructure/cache/cache-key.js';
 import { byteLength } from '../shared/json.js';
+import { currentOperation, throwIfCancelled } from '../shared/operation.js';
 import type { CachedResourceLoader } from './cached-resource-loader.js';
 
 /** NVD sorts by publication even with lastMod filters: load the bounded set before sorting. */
@@ -44,6 +45,7 @@ export async function loadModifiedFeedPage(args: {
       let requests = 0;
       const limit = Math.min(MAX_MODIFIED_FEED_RESULTS, args.maxStartIndex + args.pageSize);
       do {
+        throwIfCancelled();
         if (++requests > Math.ceil(MAX_MODIFIED_FEED_RESULTS / UPSTREAM_PAGE_SIZE)) {
           throw DomainError.upstreamBadResponse('Modified feed could not be loaded within the request budget; narrow the date window');
         }
@@ -62,6 +64,7 @@ export async function loadModifiedFeedPage(args: {
           throw DomainError.upstreamBadResponse('Modified feed changed or returned an incomplete page; retry');
         }
         items.push(...args.mapPage(upstream, request).items);
+        currentOperation()?.onProgress?.(`Loaded ${items.length} of ${total} modified CVEs`);
         if (byteLength(JSON.stringify(items)) > MAX_QUERY_CACHE_PAYLOAD_BYTES - 1_024) {
           throw DomainError.invalidInput('Modified feed exceeds the snapshot byte budget; narrow the date window or filters');
         }

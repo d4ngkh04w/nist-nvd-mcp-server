@@ -140,7 +140,9 @@ export const feedFiltersInput = {
  */
 export const fieldsInput = (allowed: readonly string[]) =>
   z
-    .array(z.string().min(1))
+    // Publish an enum without changing the established DomainError INVALID_INPUT contract:
+    // resolveFields owns allowlist validation; SDK enum validation would bypass that handler.
+    .array(z.string().min(1).meta({ enum: [...allowed] }))
     .min(1)
     .max(allowed.length)
     .optional()

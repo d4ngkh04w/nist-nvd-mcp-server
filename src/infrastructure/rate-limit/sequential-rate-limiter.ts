@@ -1,5 +1,6 @@
 import { DomainError } from '../../domain/errors.js';
 import { sleep } from '../../shared/async.js';
+import { cancellationError, currentOperation, runWithOperation, throwIfCancelled } from '../../shared/operation.js';
 
 export type RateLimiterStats = {
   started: number;
@@ -25,6 +26,7 @@ export type SequentialRateLimiterOptions = {
 type QueueEntry = {
   run: () => void;
   reject: (error: unknown) => void;
+  cleanup: () => void;
 };
 
 /**
@@ -75,8 +77,10 @@ export class SequentialRateLimiter {
     this.wait = options.wait ?? sleep;
   }
 
-  schedule<T>(task: () => Promise<T>): Promise<T> {
+  schedule<T>(task: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    const operation = currentOperation() ?? {};
     return new Promise<T>((resolve, reject) => {
+      if (signal !== undefined) throwIfCancelled(signal);
       if (this.disposed) {
         this.rejectedCount += 1;
         reject(shutdownError());
@@ -92,12 +96,23 @@ export class SequentialRateLimiter {
         );
         return;
       }
-      this.queue.push({
+      const abort = () => {
+        const index = this.queue.indexOf(entry);
+        if (index < 0) return;
+        this.queue.splice(index, 1);
+        this.rejectedCount += 1;
+        entry.cleanup();
+        reject(cancellationError(signal!));
+      };
+      const entry: QueueEntry = {
         run: () => {
-          this.dispatch(task).then(resolve, reject);
+          runWithOperation(operation, () => this.dispatch(task)).then(resolve, reject);
         },
         reject,
-      });
+        cleanup: () => signal?.removeEventListener('abort', abort),
+      };
+      signal?.addEventListener('abort', abort, { once: true });
+      this.queue.push(entry);
       this.observedQueueDepth = Math.max(this.observedQueueDepth, this.queue.length);
       this.pump();
     });
@@ -122,6 +137,7 @@ export class SequentialRateLimiter {
     const error = shutdownError();
     const dropped = this.queue.splice(0, this.queue.length);
     for (const entry of dropped) {
+      entry.cleanup();
       this.rejectedCount += 1;
       entry.reject(error);
     }
@@ -139,6 +155,7 @@ export class SequentialRateLimiter {
         return;
       }
       this.active += 1;
+      entry.cleanup();
       this.startedCount += 1;
       const startedAt = this.now();
       this.lastStartAtMs = startedAt;

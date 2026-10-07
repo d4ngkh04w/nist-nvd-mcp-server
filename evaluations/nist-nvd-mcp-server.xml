@@ -1,62 +1,47 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!--
-  Evaluation set for the nist-nvd-mcp-server server.
-
-  Every answer below was verified by executing the task against the live NVD API through this
-  server's own tools, so the expected values are the server's real output rather than a guess.
-
-  All ten questions are read-only and independent. Answers are deliberately drawn from stable
-  facts: published/KEV timestamps, CVSS base scores, immutable NVD identifiers (cpeNameId,
-  matchCriteriaId), controlled enum-like strings, and counts over windows large enough that the
-  upstream data cannot make them drift. Nothing here depends on a "current state" total.
-
-  Tool coverage (questions name the capability, not the tool, so the agent must map need to tool):
-
-    1  nvd_search_cves + nvd_get_cve_summary   6  nvd_search_cpe_matches (paged)
-    2  nvd_search_cves (kev window) + summary  7  nvd_search_cpes + nvd_search_cpe_matches
-    3  nvd_get_cves (batch)                   8  nvd_get_modified_cves (cursor, 2 pages)
-    4  nvd_get_cve (includeConfigurations)    9  nvd_get_recent_cves (meta.ordering)
-    5  nvd_get_cve_history (2 pages)         10  nvd_get_cpe
--->
+<!-- Fixed synthetic regression dataset. Run ONLY with scripts/evaluation-fixture.ts.
+     These CVE facts and products are fictional, not a captured/live NVD dataset.
+     Each question is independent and requires multiple tool calls.
+     tests/contract/evaluation-fixture.test.ts verifies all ten answers via MCP. -->
 <evaluation>
   <qa_pair>
-    <question>A vulnerability in the Apache Log4j2 Java logging library let an attacker who controls log message content trigger a lookup of a remote naming service and execute arbitrary code. It was published in December 2021, and the day it was published was also the day CISA added it to the Known Exploited Vulnerabilities catalogue. Identify it by searching the CVE database for the December 2021 record that describes this lookup-driven code execution, then confirm with the CVE summary tool that it is a known exploited entry whose KEV date equals its publication date. What is its CVE identifier?</question>
-    <answer>CVE-2021-44228</answer>
+    <question>In the fixture database, find the Aurora parser remote code execution published between 1 and 10 March 2024. Confirm its KEV membership with a summary lookup. What is its CVE identifier? Return only the identifier.</question>
+    <answer>CVE-2024-1001</answer>
   </qa_pair>
   <qa_pair>
-    <question>CISA added a batch of vulnerabilities to its Known Exploited Vulnerabilities catalogue on 3 November 2021. Among them is a flaw in Windows Remote Desktop Services that lets a remote attacker execute code before authentication and without any user interaction. Restrict the CVE search to that single KEV date, then use the CVE summary tool to find the entry whose product is Windows Remote Desktop Services. What is that CVE's CVSS 3.1 base score?</question>
-    <answer>9.8</answer>
+    <question>Find the fixture CVEs added to KEV on 1 April 2024. Retrieve their summaries in a batch and compare CVSS 3.1 base scores. Which CVE has the highest score? Return only its identifier.</question>
+    <answer>CVE-2024-1001</answer>
   </qa_pair>
   <qa_pair>
-    <question>Consider four vulnerabilities: a buffer over-read in OpenSSL's TLS heartbeat extension, a race condition in the Linux kernel's copy-on-write page handling, a JNDI lookup flaw in Apache Log4j2, and a remote code execution flaw in Windows' Server Message Block implementation. Look them all up with the batch CVE summary tool and compare their CVSS 3.1 base scores. Which one of the four has the lowest CVSS 3.1 base score? Answer with the CVE identifier and nothing else.</question>
-    <answer>CVE-2016-5195</answer>
+    <question>Search the fixture CVEs published between 1 and 10 March 2024. Use a batch lookup to compare all their CVSS 3.1 scores. Which identifier has the lowest score? Return only the identifier.</question>
+    <answer>CVE-2024-1003</answer>
   </qa_pair>
   <qa_pair>
-    <question>Fetch the full record of the Log4Shell CVE with configurations included. Its affected-product list mixes several vendors. Among the CPE criteria that name the Apache Log4j product itself (the application CPEs whose product component is log4j, not the unrelated firmware and hardware entries), every one of them shares the same vendor component. What is that vendor name as it appears in the CPE 2.3 formatted string?</question>
-    <answer>apache</answer>
+    <question>Find the fixture Aurora parser CVE. Inspect its full applicability record, then resolve its CPE match criteria. What is the exclusive upper version bound on its Aurora range beginning at 1.0? Return only the version string.</question>
+    <answer>2.0</answer>
   </qa_pair>
   <qa_pair>
-    <question>The change history of the Log4Shell CVE has grown past fifty entries, so it cannot be read in one call. Page through the CVE history tool until you have seen every change record, then collect the distinct eventName values. Besides "CVE Modified", "Initial Analysis", "Modified Analysis" and "Reanalysis", exactly one further eventName appears, recording that the CPE entries referenced by the CVE were remapped to their replacements. What is that exact eventName string?</question>
+    <question>Read the fixture change history of CVE-2024-1001 with pageSize 1, following every cursor. What is the eventName of its final, newest change? Return the exact eventName and nothing else.</question>
     <answer>CPE Deprecation Remap</answer>
   </qa_pair>
   <qa_pair>
-    <question>CVE-2021-44228 has hundreds of CPE match criteria published for it. Page through the CPE match criteria search restricted to that CVE and find the single entry whose criteria string is exactly cpe:2.3:a:apache:log4j:2.0:rc1:*:*:*:*:*:* . What is that match criteria's matchCriteriaId?</question>
-    <answer>B773ED91-1D39-42E6-9C52-D02210DE1A94</answer>
+    <question>Page through the fixture CPE match criteria for CVE-2024-1001 with pageSize 1. Find the criterion for Aurora 2.0 and use its matches dictionary identifier to fetch that CPE entry. Return the dictionary entry's full cpeName.</question>
+    <answer>cpe:2.3:a:fixture:aurora:2.0:*:*:*:*:*:*:*</answer>
   </qa_pair>
   <qa_pair>
-    <question>In the NVD Official CPE Dictionary, search the CPE names matching the pattern cpe:2.3:a:apache:log4j:* . One of those dictionary entries is the exact CPE name that also appears as the criteria of the CPE match criteria for the Log4Shell release candidate 1 build. Report that CPE name in full, in CPE 2.3 formatted string notation.</question>
-    <answer>cpe:2.3:a:apache:log4j:2.0:rc1:*:*:*:*:*:*</answer>
+    <question>Search the fixture CPE Dictionary for Aurora, including deprecated entries. Follow the deprecated entry's deprecatedBy identifier with a dictionary lookup. Return the replacement entry's full cpeName.</question>
+    <answer>cpe:2.3:a:fixture:aurora:2.0:*:*:*:*:*:*:*</answer>
   </qa_pair>
   <qa_pair>
-    <question>Fetch two consecutive pages of the CVE feed that is ordered by last-modified date, restricted to the last seven days, asking for twenty-five records per page and following the returned nextCursor for the second page. How many distinct CVE identifiers do the two pages contain in total? Answer with a single number.</question>
-    <answer>50</answer>
+    <question>Read two consecutive pages of the fixture modified CVE feed for 1 through 10 March 2024, with pageSize 2. Verify that the four identifiers do not repeat and compare lastModified timestamps across both pages. Which identifier was modified most recently? Return only the identifier.</question>
+    <answer>CVE-2024-1002</answer>
   </qa_pair>
   <qa_pair>
-    <question>The NVD API returns results for a date-range query in ascending date order, so this server reverses the window it requests in order to present a newest-first feed. To let a client assert that the reversal actually happened, every feed response carries an ordering marker in its metadata. Ask for the CVEs published in the last seven days and report the exact string found in the ordering field of the response metadata.</question>
-    <answer>published_desc</answer>
+    <question>Read both pages of the fixture recent CVE feed for 1 through 10 March 2024, with pageSize 2. Verify the publication ordering and find the oldest publication in that window. Return only its CVE identifier.</question>
+    <answer>CVE-2024-1001</answer>
   </qa_pair>
   <qa_pair>
-    <question>The Official CPE Dictionary marks entries that NVD has replaced, and the dictionary search hides those entries unless they are explicitly requested. The pre-release Log4j 2.0 alpha 1 entry (identifier 82F877C8-FC1D-4790-A6AC-FC89556011C5) is still part of the dictionary. Look it up with the single CPE entry tool and report the value of its deprecated flag. Respond with true or false and nothing else.</question>
-    <answer>false</answer>
+    <question>Search the fixture CPE Dictionary for Aurora without deprecated entries. Fetch the surviving entry by its dictionary identifier and read its English title. Return that exact title and nothing else.</question>
+    <answer>Fixture Aurora 2.0</answer>
   </qa_pair>
 </evaluation>

@@ -8,6 +8,7 @@ import { DomainError, toDomainError } from '../domain/errors.js';
 import type { Clock } from '../domain/ports.js';
 import type { DiskCache } from '../infrastructure/cache/disk-cache.js';
 import { type SingleFlight, sleep } from '../shared/async.js';
+import { currentOperation, throwIfCancelled } from '../shared/operation.js';
 import { safeJsonParse } from '../shared/json.js';
 import type { Logger } from '../shared/logger.js';
 import { addSeconds, ageSeconds, isExpired, toIso } from '../shared/time.js';
@@ -110,6 +111,7 @@ export class CachedResourceLoader {
   }
 
   async load<T>(options: LoadOptions<T>): Promise<LoadResult<T>> {
+    throwIfCancelled();
     const now = this.clock.now();
     const warnings = [...(options.warnings ?? [])];
 
@@ -177,6 +179,7 @@ export class CachedResourceLoader {
       const record = await this.singleFlight.run(flightKey, () =>
         this.refresh(options, now, warnings),
       );
+      throwIfCancelled();
       return {
         value: record.value,
         raw: record.raw,
@@ -189,6 +192,8 @@ export class CachedResourceLoader {
         }),
       };
     } catch (error) {
+      // Cancellation/deadlines are caller controls, not an upstream outage.
+      throwIfCancelled();
       const domainError = toDomainError(error);
       if (stale === null || NOT_FOUND_CODES.has(domainError.code)) {
         throw domainError;
@@ -269,6 +274,7 @@ export class CachedResourceLoader {
     warnings: string[],
   ): Promise<LoadedRecord<T>> {
     const upstream = await options.fetchUpstream();
+    throwIfCancelled();
     if (!upstream.found) {
       throw (
         options.notFound?.() ??
@@ -287,6 +293,7 @@ export class CachedResourceLoader {
       warnings.push('The result could not be persisted to the local database');
       this.logger.warn('cache_write_failed', { resource: options.resource, error });
     }
+    throwIfCancelled();
     await this.writeToDisk(options.resource, options.cacheKey, record);
     return record;
   }
@@ -314,7 +321,7 @@ export class CachedResourceLoader {
           nextAttempt: attempt + 1,
           delayMs: CACHE_WRITE_RETRY_BASE_MS * attempt,
         });
-        await sleep(CACHE_WRITE_RETRY_BASE_MS * attempt);
+        await sleep(CACHE_WRITE_RETRY_BASE_MS * attempt, currentOperation()?.signal);
       }
     }
   }

@@ -31,3 +31,18 @@ describe('stale cache retention configuration', () => {
     expect(() => loadConfig({ CACHE_STALE_RETENTION_SECONDS: '0.5' })).toThrow(ConfigError);
   });
 });
+
+describe('MCP request and output budgets', () => {
+  it('provides bounded defaults and accepts explicit overrides', () => {
+    expect(loadConfig({}).mcp).toEqual({ toolTimeoutMs: 120_000, maxOutputBytes: 1_000_000 });
+    expect(loadConfig({ MCP_TOOL_TIMEOUT_MS: '500', MCP_MAX_OUTPUT_BYTES: '2048' }).mcp)
+      .toEqual({ toolTimeoutMs: 500, maxOutputBytes: 2_048 });
+  });
+  it.each([
+    { MCP_TOOL_TIMEOUT_MS: '0' }, { MCP_TOOL_TIMEOUT_MS: '3600001' },
+    { MCP_MAX_OUTPUT_BYTES: '1023' }, { MCP_MAX_OUTPUT_BYTES: '16000001' },
+    { MCP_MAX_OUTPUT_BYTES: '1024.5' },
+  ])('rejects invalid budgets: %j', env => {
+    expect(() => loadConfig(env)).toThrow(ConfigError);
+  });
+});

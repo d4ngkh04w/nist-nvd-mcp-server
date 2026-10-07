@@ -1,11 +1,24 @@
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
-import type { ToolError } from '../domain/errors.js';
+import { DEFAULT_MCP_MAX_OUTPUT_BYTES } from '../config/defaults.js';
+import { DomainError, type ToolError } from '../domain/errors.js';
 
 /** Mirror structured output as text for clients that do not support structuredContent. */
-export function buildSuccessResult(payload: Record<string, unknown>): CallToolResult {
+export function buildSuccessResult(
+  payload: Record<string, unknown>,
+  maxBytes = DEFAULT_MCP_MAX_OUTPUT_BYTES,
+): CallToolResult {
+  const text = JSON.stringify(payload);
+  const actualBytes = Buffer.byteLength(text, 'utf8');
+  if (actualBytes > maxBytes) {
+    throw new DomainError({
+      code: 'RESPONSE_TOO_LARGE',
+      message: 'Response exceeds the output budget; use fewer fields, a smaller pageSize, or set includeRaw, includeConfigurations and includeReferences to false',
+      details: { actualBytes, maxBytes },
+    });
+  }
   return {
-    content: [{ type: 'text', text: JSON.stringify(payload) }],
+    content: [{ type: 'text', text }],
     structuredContent: payload,
   };
 }
